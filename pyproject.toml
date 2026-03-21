@@ -61,7 +61,7 @@ ignore = [
 quote-style = "double"
 docstring-code-format = true
 
-[tool.ty]
+[tool.ty.environment]
 python-version = "3.13"
 
 [tool.ty.rules]
