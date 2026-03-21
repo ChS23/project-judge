@@ -55,10 +55,12 @@ ignore = [
     "RET504", # unnecessary assignment before return
     "B008",   # function call in default arg — common in DI
     "RUF001", # ambiguous unicode — prompts are in Russian
+    "RUF002", # ambiguous unicode in docstrings — tool descriptions are in Russian
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S", "ARG"]
+"src/judge/agent/tools/**" = ["ARG001"]
 
 [tool.ruff.format]
 quote-style = "double"
