@@ -25,16 +25,15 @@ Built for the "Системы ИИ" course (VolGTU) and also serves as a case st
 
 ## Architecture
 
-GitHub App receives PR webhook via Granian ASGI server, dispatches to Taskiq worker. Orchestrator Agent (LangGraph) delegates to specialized agents:
+GitHub App receives PR webhook via Granian ASGI server, dispatches to Taskiq worker. Worker runs a **tool use loop agent** (Claude Code pattern) built on low-level LangGraph (`StateGraph` + `ToolNode` + `tools_condition`).
 
-1. **Google Sheets Reader** — resolves student role/team/group, deadlines, rubrics
-2. **Spec Fetcher** — fetches lab specification from course website, parses DoD criteria and expected file paths
-3. **Artifacts Agent** — checks file presence in PR diff, parses DoD checklist (`[x]`/`[ ]`) from PR description
-4. **Content Reviewer** — LLM-based evaluation of document quality against rubrics (with input sanitization and prompt injection detection)
-5. **Sandbox Agent** (Lab 4+ only) — E2B sandbox: git clone → docker-compose up → health checks → pytest (10 min timeout)
-6. **Deadline Agent** — calculates penalty coefficient from `pr.created_at` vs deadline
+The agent decides which tools to call, in what order, how many times — adapts to different labs and projects without hardcoded control flow.
 
-Results are aggregated into a markdown comment posted to the PR and written to Google Sheets.
+**Tools available to the agent:**
+- `read_roster`, `fetch_spec`, `check_artifacts`, `parse_dod`, `check_deadline` — deterministic
+- `evaluate_content` — sub-agent (separate LLM call for content evaluation)
+- `run_sandbox` — sub-agent (E2B sandbox execution)
+- `post_comment`, `write_results` — write actions
 
 ## Key Design Decisions
 

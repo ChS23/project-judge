@@ -1,65 +1,66 @@
 # Архитектура системы
 
+## Agent loop (паттерн Claude Code)
+
+Агент работает как tool use loop — LLM сам решает какие tools вызвать, в каком порядке, сколько раз. Адаптируется к разным лабам и проектам без хардкода.
+
 ```
-GitHub PR (открыт студентом)
+GitHub PR webhook
     ↓
-GitHub Actions (webhook trigger)
+Granian ASGI → gidgethub verify + route → Taskiq Redis queue → 202
     ↓
-Orchestrator Agent (LangGraph + GLM-4.7)
-    │
-    ├── [1] Google Sheets Reader
-    │     → студент по username → роль, команда, группа
-    │     → дедлайн для lab_id + group_id
-    │     → рубрики для lab_id + deliverable_id
-    │
-    ├── [2] Spec Fetcher
-    │     → GET сайт/materials/labs/lab{N}
-    │     → парсинг DoD критериев и ожидаемых файловых путей
-    │
-    ├── [3] Artifacts Agent
-    │     → проверка наличия файлов по путям из спецификации
-    │     → парсинг DoD чеклиста из PR description
-    │
-    ├── [4] Content Reviewer
-    │     → LLM оценка содержимого по рубрикам из Sheets
-    │     → детект prompt injection паттернов
-    │
-    ├── [5] Sandbox Agent (только Lab 4+)
-    │     → E2B v2: sandbox.git.clone → docker-compose up → health checks
-    │     → HTTP check demo links (3 retry)
-    │
-    └── [6] Deadline Agent
-          → расчёт penalty_coefficient
+Taskiq worker
     ↓
-Results Aggregator
-    ├── Комментарий в PR (markdown отчёт с оценкой по критериям)
-    └── Запись в Google Sheets (вкладка results)
+LangGraph StateGraph (low-level):
+    ┌─────────────────────────────────────────┐
+    │  agent node (GLM-4.7 + bound tools)     │
+    │      ↓                                  │
+    │  tool_calls? ──yes──→ ToolNode          │
+    │      │                    │              │
+    │      no                   └──→ agent     │
+    │      ↓                                  │
+    │     END (финальный отчёт)               │
+    └─────────────────────────────────────────┘
 ```
 
-## Агенты
+Реализация: `StateGraph` + `ToolNode` + `tools_condition` из LangGraph.
 
-**Artifacts Agent**
-- Читает diff PR → список файлов
-- Сравнивает с ожидаемыми путями из спецификации сайта
-- Парсит `- [x]` / `- [ ]` из PR description
-- Результат: `{files_present: [], files_missing: [], dod_checked: N, dod_total: M}`
+## Tools
 
-**Content Reviewer**
-- Получает текст каждого артефакта
-- Sanitization перед передачей в LLM
-- Оценивает по рубрикам из Sheets (конкретность, полнота, измеримость)
-- Результат: `{criterion: score}` по каждому deliverable
+Агент имеет доступ к набору tools. Каждый tool — async функция с `@tool` декоратором.
 
-**Sandbox Agent** (Lab 4+)
-- E2B sandbox v2 на каждый PR, изолированно
-- `sandbox.git.clone()` → `docker-compose up` → health checks → `pytest`
-- Точка входа стандартизирована: `docker-compose up` обязателен по DoD
-- Три уровня: воспроизводимость → работоспособность → качество тестов
-- Таймаут: 10 минут, streaming вывода команд
-- Результат: `{build: pass/fail, tests: N/M, demo_alive: bool, errors: [...]}`
+**Детерминированные tools:**
 
-**Deadline Agent**
-- Читает `pr.created_at` из GitHub API
-- Читает дедлайн из Google Sheets
-- Считает `penalty_coefficient`
-- Результат: `{days_late: N, coefficient: 0.X}`
+| Tool | Что делает | LLM внутри? |
+|---|---|---|
+| `read_roster(username)` | Lookup студента в Google Sheets → группа, роль, команда | Нет |
+| `fetch_spec(lab_id)` | HTTP fetch спецификации лабы с сайта курса | Нет |
+| `check_artifacts(repo, pr)` | Список файлов в PR diff, сравнение с ожидаемыми | Нет |
+| `parse_dod(pr_body)` | Парсинг `[x]`/`[ ]` чеклиста из описания PR | Нет |
+| `check_deadline(created_at, deadline)` | Расчёт penalty_coefficient | Нет |
+| `post_comment(repo, pr, body)` | Комментарий в PR через GitHub API | Нет |
+| `write_results(...)` | Запись результатов в Google Sheets | Нет |
+
+**Sub-agents (tool внутри которого отдельный LLM):**
+
+| Tool | Что делает |
+|---|---|
+| `evaluate_content(text, criteria)` | Оценка качества документа по рубрикам. Отдельный LLM вызов с промптом для оценки. Изолированный контекст |
+| `run_sandbox(repo, branch)` | E2B sandbox: clone → docker-compose → health checks → pytest. Sub-agent разбирается с ошибками сам |
+
+## Почему tool use loop, а не статический граф
+
+- Каждая лаба другая (документы / код / docker / demo)
+- Каждый студенческий проект уникален
+- Агент адаптируется: если sandbox упал — проверяет документы, если файлов нет — не оценивает контент
+- Настоящий агент (требование курса)
+- Audit trail — полная история рассуждений для апелляций
+
+## Системный промпт
+
+Промпт направляет агента:
+- Роль: автоматический грейдер студенческих проектов
+- Контекст PR: repo, branch, sender, created_at
+- Правила оценки: формула штрафов, шкала баллов
+- Формат отчёта: markdown таблица с критериями
+- Ограничения: не мержить PR, не удалять файлы
