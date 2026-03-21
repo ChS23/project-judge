@@ -61,6 +61,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S", "ARG"]
 "src/judge/agent/tools/**" = ["ARG001"]
+"src/judge/sheets/**" = ["ARG001"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -75,8 +76,15 @@ possibly-unresolved-reference = "warn"
 unresolved-import = "warn"
 unresolved-attribute = "warn"
 invalid-argument-type = "warn"
+unknown-argument = "warn"
+missing-typed-dict-key = "warn"
+invalid-key = "warn"
 invalid-type-form = "error"
 division-by-zero = "error"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+asyncio_mode = "auto"
 
 [tool.ty.analysis]
 allowed-unresolved-imports = ["langchain_openai"]
@@ -89,3 +97,7 @@ include = ["tests/**"]
 
 [tool.ty.overrides.rules]
 possibly-unresolved-reference = "ignore"
+invalid-argument-type = "ignore"
+missing-typed-dict-key = "ignore"
+invalid-key = "ignore"
+unknown-argument = "ignore"
