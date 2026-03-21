@@ -1,5 +1,7 @@
 from langchain_core.tools import tool
 
+from judge.sheets.client import read_roster as _read_roster
+
 
 @tool
 async def read_roster(github_username: str) -> dict:
@@ -8,13 +10,10 @@ async def read_roster(github_username: str) -> dict:
     Args:
         github_username: GitHub username студента
     """
-    # TODO: реализовать через sheets/client.py
-    return {
-        "github_username": github_username,
-        "full_name": "",
-        "group_id": "",
-        "team_name": "",
-        "role": "",
-        "topic": "",
-        "error": "sheets client not implemented yet",
-    }
+    record = await _read_roster(github_username)
+    if record is None:
+        return {
+            "github_username": github_username,
+            "error": "Student not found in roster",
+        }
+    return record

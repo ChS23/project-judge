@@ -1,4 +1,5 @@
 from langchain_core.messages import HumanMessage, SystemMessage
+from langfuse.langchain import CallbackHandler
 from langgraph.graph import START, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
@@ -6,6 +7,17 @@ from judge.agent.prompt import build_system_prompt
 from judge.agent.tools import all_tools
 from judge.llm.client import get_llm
 from judge.models.pr import PRContext
+from judge.settings import settings
+
+
+def _langfuse_handler() -> CallbackHandler | None:
+    if not settings.langfuse_public_key:
+        return None
+    return CallbackHandler(
+        public_key=settings.langfuse_public_key,
+        secret_key=settings.langfuse_secret_key,
+        host=settings.langfuse_host,
+    )
 
 
 def build_agent(pr: PRContext):
@@ -30,7 +42,14 @@ def build_agent(pr: PRContext):
 
 async def run_agent(pr: PRContext) -> str:
     agent = build_agent(pr)
+    config = {}
+
+    handler = _langfuse_handler()
+    if handler:
+        config["callbacks"] = [handler]
+
     result = await agent.ainvoke(
         {"messages": [HumanMessage(content=f"Проверь PR #{pr.pr_number}")]},
+        config=config,
     )
     return result["messages"][-1].content
