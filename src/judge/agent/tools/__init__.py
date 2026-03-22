@@ -1,5 +1,5 @@
 from judge.agent.tools.artifacts import make_check_artifacts
-from judge.agent.tools.comment import make_post_comment
+from judge.agent.tools.comment import make_escalate, make_post_comment
 from judge.agent.tools.content import evaluate_content
 from judge.agent.tools.deadline import check_deadline
 from judge.agent.tools.dod import parse_dod
@@ -20,5 +20,6 @@ def get_all_tools(pr: PRContext):
         evaluate_content,
         make_review_code(pr),
         make_post_comment(pr),
+        make_escalate(pr),
         make_write_results(pr),
     ]
