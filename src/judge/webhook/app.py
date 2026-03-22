@@ -72,11 +72,14 @@ async def app(scope, receive, send):
     await _respond(send, 404, {"error": "not found"})
 
 
-async def _read_body(receive) -> bytes:
+async def _read_body(receive, max_size: int = 1_048_576) -> bytes:
     body = b""
     while True:
         message = await receive()
         body += message.get("body", b"")
+        if len(body) > max_size:
+            msg = "Request body too large"
+            raise ValueError(msg)
         if not message.get("more_body", False):
             return body
 

@@ -50,9 +50,9 @@ EVALUATOR_PROMPT = """\
 def _build_content_evaluator():
     llm = get_llm()
 
-    def agent_node(state: MessagesState) -> dict:
+    async def agent_node(state: MessagesState) -> dict:
         messages = [SystemMessage(content=EVALUATOR_PROMPT), *state["messages"]]
-        response = llm.invoke(messages)
+        response = await llm.ainvoke(messages)
         return {"messages": [response]}
 
     graph = StateGraph(MessagesState)

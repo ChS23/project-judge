@@ -39,7 +39,7 @@ def build_agent(pr: PRContext):
     graph.add_conditional_edges("agent", tools_condition)
     graph.add_edge("tools", "agent")
 
-    return graph.compile()
+    return graph.compile(recursion_limit=30)
 
 
 async def run_agent(pr: PRContext) -> str:

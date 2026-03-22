@@ -34,14 +34,21 @@ def test_clean_text():
 def test_sanitize_truncates():
     text = "a" * 20000
     result = sanitize_content(text, max_length=100)
-    assert len(result) == 100
+    assert "a" * 100 in result
+    assert "a" * 101 not in result
 
 
 def test_sanitize_removes_null_bytes():
     text = "hello\x00world"
     result = sanitize_content(text)
     assert "\x00" not in result
-    assert result == "helloworld"
+    assert "helloworld" in result
+
+
+def test_sanitize_wraps_with_delimiters():
+    result = sanitize_content("test content")
+    assert result.startswith("--- BEGIN STUDENT DOCUMENT ---")
+    assert result.endswith("--- END STUDENT DOCUMENT ---")
 
 
 def test_detect_override_score():

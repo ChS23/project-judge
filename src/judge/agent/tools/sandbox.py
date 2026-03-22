@@ -5,6 +5,7 @@ from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel, Field
 
 from judge.github.auth import get_installation_token
+from judge.github.client import post_review
 from judge.llm.client import get_llm
 from judge.models.pr import PRContext
 from judge.settings import settings
@@ -21,18 +22,60 @@ REVIEWER_PROMPT = """\
 ## Типичный план (адаптируй под проект)
 
 1. Изучи структуру проекта (ls, tree, cat README, etc.)
-2. Найди конфигурацию сборки (Dockerfile, docker-compose.yml, Makefile, package.json, etc.)
-3. Запусти сборку
-4. Запусти тесты если есть
-5. Если есть docker-compose — подними сервисы и проверь health
-6. Проверь логи если что-то упало
+2. Прочитай ключевые файлы: точку входа, конфиги, Dockerfile
+3. Оцени качество кода (см. критерии ниже)
+4. Запусти сборку
+5. Запусти тесты если есть
+6. Если есть docker-compose — подними сервисы и проверь health
+7. Проверь логи если что-то упало
+
+## Критерии качества кода (минимум junior-уровень)
+
+Код должен соответствовать хотя бы базовым стандартам. Отмечай нарушения:
+
+**Структура проекта:**
+- Есть осмысленное разделение на модули/пакеты, а не всё в одном файле
+- Есть .gitignore, README с инструкцией запуска
+- Нет коммитов node_modules, .env, __pycache__, билд-артефактов
+
+**Качество кода:**
+- Осмысленные имена переменных и функций (не a, b, x, temp, data1)
+- Функции не длиннее ~50 строк, делают одну вещь
+- Нет copy-paste дублирования
+- Нет захардкоженных секретов, паролей, токенов
+- Есть обработка ошибок на границах системы (API, БД, файлы)
+- Нет закомментированного мёртвого кода
+
+**Архитектура:**
+- Логика не в обработчиках роутов / контроллерах — есть слой сервисов или хотя бы выделенные функции
+- Конфигурация через env / файлы, не захардкожена
+- Зависимости явные (requirements.txt / package.json / go.mod)
+
+**Инфраструктура (если есть Docker):**
+- Dockerfile собирается без ошибок
+- Используется multi-stage build или хотя бы не тянет лишнее
+- docker-compose поднимает все заявленные сервисы
+- Health checks работают
 
 ## Правила
 
 - Рабочая директория: /home/user/repo
 - Если команда зависла — попробуй с timeout или другой подход
 - Не модифицируй код студента
+- Будь конкретным: указывай файлы и строки где нашёл проблемы
+- Для каждой проблемы в коде запоминай path (относительный от корня репо) и номер строки — \
+они попадут в inline-комментарии к PR
 """
+
+
+class InlineComment(BaseModel):
+    """Inline-комментарий к конкретной строке кода."""
+
+    path: str = Field(
+        description="Относительный путь от корня репо (например: src/main.py)"
+    )
+    line: int = Field(description="Номер строки в файле")
+    body: str = Field(description="Текст комментария")
 
 
 class SandboxReport(BaseModel):
@@ -46,7 +89,18 @@ class SandboxReport(BaseModel):
     services: list[str] = Field(
         description="Список поднятых сервисов и их статус health check"
     )
-    issues: list[str] = Field(description="Найденные проблемы")
+    code_quality_issues: list[str] = Field(
+        description="Проблемы качества кода: плохие имена, дублирование, захардкоженные секреты, мёртвый код и т.д. Формат: 'файл:строка — описание'"
+    )
+    architecture_issues: list[str] = Field(
+        description="Проблемы архитектуры: логика в роутах, нет разделения слоёв, захардкоженный конфиг и т.д."
+    )
+    inline_comments: list[InlineComment] = Field(
+        description="Inline-комментарии к конкретным строкам кода"
+    )
+    issues: list[str] = Field(
+        description="Прочие проблемы: сборка, тесты, инфраструктура"
+    )
     summary: str = Field(description="Общий вывод в 2-3 предложения")
 
 
@@ -184,7 +238,25 @@ def make_review_code(pr: PRContext):
             result = await reviewer.ainvoke(
                 {"messages": [HumanMessage(content=task)]},
             )
-            return result["messages"][-1].content
+
+            raw = result["messages"][-1].content
+            report = SandboxReport.model_validate_json(raw)
+
+            if report.inline_comments:
+                await post_review(
+                    pr,
+                    body=f"🤖 **Code Review — автопроверка**\n\n{report.summary}",
+                    comments=[
+                        {
+                            "path": c.path,
+                            "line": c.line,
+                            "body": c.body,
+                        }
+                        for c in report.inline_comments
+                    ],
+                )
+
+            return raw
 
         finally:
             sandbox.kill()

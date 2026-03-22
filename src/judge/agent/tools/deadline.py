@@ -1,6 +1,13 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 from langchain_core.tools import tool
+
+
+def _to_utc(dt: datetime) -> datetime:
+    """Нормализовать datetime к UTC."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
 
 
 @tool
@@ -11,8 +18,8 @@ def check_deadline(pr_created_at: str, deadline: str) -> dict:
         pr_created_at: ISO datetime когда PR был открыт
         deadline: ISO datetime дедлайна сдачи
     """
-    created = datetime.fromisoformat(pr_created_at)
-    due = datetime.fromisoformat(deadline)
+    created = _to_utc(datetime.fromisoformat(pr_created_at))
+    due = _to_utc(datetime.fromisoformat(deadline))
     delta_days = (created - due).days
 
     if delta_days <= 0:

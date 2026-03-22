@@ -45,4 +45,4 @@ def sanitize_content(text: str, max_length: int = 15000) -> str:
     """
     text = text[:max_length]
     text = text.replace("\x00", "")
-    return text
+    return f"--- BEGIN STUDENT DOCUMENT ---\n{text}\n--- END STUDENT DOCUMENT ---"
