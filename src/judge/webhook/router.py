@@ -20,18 +20,24 @@ async def on_pull_request(event: Event) -> None:
     await logger.ainfo("task_enqueued", pr=pr.pr_number)
 
 
+@router.register("pull_request", action="labeled")
+async def on_label(event: Event) -> None:
+    label = event.data.get("label", {}).get("name", "")
+    if label == "review-requested":
+        pr = PRContext.from_event(event.data)
+        await logger.ainfo("review_requested", pr=pr.pr_number, sender=pr.sender)
+
+
 @router.register("issue_comment", action="created")
 async def on_comment(event: Event) -> None:
     data = event.data
 
-    # Только PR комментарии (issue_comment приходит и для issues и для PR)
     if "pull_request" not in data.get("issue", {}):
         return
 
     comment = data["comment"]
     author = comment["user"]["login"]
 
-    # Не отвечать на свои комментарии (бот)
     if author.endswith("[bot]"):
         return
 
@@ -39,7 +45,6 @@ async def on_comment(event: Event) -> None:
     if not body:
         return
 
-    # Собираем PRContext из issue данных
     issue = data["issue"]
     pr = PRContext(
         repo=data["repository"]["full_name"],

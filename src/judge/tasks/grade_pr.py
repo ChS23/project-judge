@@ -1,6 +1,7 @@
 import structlog
 
 from judge.agent.graph import run_agent
+from judge.github.client import add_label
 from judge.models.pr import PRContext
 from judge.tasks.broker import broker
 
@@ -12,11 +13,12 @@ async def grade_pr(pr: PRContext) -> None:
     try:
         await logger.ainfo("grading_start", pr=pr.pr_number, sender=pr.sender)
         result = await run_agent(pr)
+        await add_label(pr, "graded")
         await logger.ainfo("grading_done", pr=pr.pr_number, result=result[:200])
     except Exception:
         await logger.aexception("grading_failed", pr=pr.pr_number)
         try:
-            from judge.github.client import add_label, post_comment
+            from judge.github.client import post_comment
 
             await post_comment(
                 pr,
