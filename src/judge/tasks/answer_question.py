@@ -61,6 +61,13 @@ async def answer_question(
 
         remaining = MAX_HINTS - used - 1
 
+        # Найти последний грейдинг-комментарий бота для контекста
+        grading_comment = ""
+        for c in reversed(comments):
+            if c["user"].endswith("[bot]") and "Результат" in c["body"]:
+                grading_comment = c["body"][:3000]
+                break
+
         llm = get_llm()
         prompt = ANSWER_PROMPT.format(
             repo=pr.repo,
@@ -68,12 +75,25 @@ async def answer_question(
             sender=pr.sender,
         )
 
-        response = await llm.ainvoke(
-            [
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": question},
-            ]
-        )
+        messages = [
+            {"role": "system", "content": prompt},
+        ]
+        if grading_comment:
+            messages.append(
+                {
+                    "role": "user",
+                    "content": f"Предыдущая оценка бота:\n\n{grading_comment}",
+                }
+            )
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": "Понял контекст оценки. Жду вопрос студента.",
+                }
+            )
+        messages.append({"role": "user", "content": question})
+
+        response = await llm.ainvoke(messages)
 
         reply = str(response.content)
         footer = (
