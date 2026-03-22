@@ -142,8 +142,10 @@ def _make_sandbox_tools(sandbox):
         Args:
             path: Путь к директории
         """
+        import shlex
+
         result = sandbox.commands.run(
-            f"find {path} -maxdepth 3 -not -path '*/node_modules/*' -not -path '*/.git/*' | head -100"
+            f"find {shlex.quote(path)} -maxdepth 3 -not -path '*/node_modules/*' -not -path '*/.git/*' | head -100"
         )
         return result.stdout[:5000]
 
@@ -240,7 +242,11 @@ def make_review_code(pr: PRContext):
             )
 
             raw = result["messages"][-1].content
-            report = SandboxReport.model_validate_json(raw)
+
+            try:
+                report = SandboxReport.model_validate_json(raw)
+            except Exception:
+                return raw
 
             if report.inline_comments:
                 await post_review(
@@ -256,7 +262,7 @@ def make_review_code(pr: PRContext):
                     ],
                 )
 
-            return raw
+            return report.model_dump_json()
 
         finally:
             sandbox.kill()
