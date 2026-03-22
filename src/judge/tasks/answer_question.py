@@ -3,12 +3,12 @@ import structlog
 from judge.github.client import get_comments, post_comment
 from judge.llm.client import get_llm
 from judge.models.pr import PRContext
-from judge.settings import settings
 from judge.tasks.broker import broker
 
 logger = structlog.get_logger()
 
-MAX_REPLIES = 5
+HINT_MARKER = "<!-- project-judge:hint -->"
+MAX_HINTS = 5
 
 ANSWER_PROMPT = """\
 Ты — ассистент преподавателя курса "Системы ИИ".
@@ -34,6 +34,11 @@ PR: #{pr_number}
 """
 
 
+def _count_hints(comments: list[dict]) -> int:
+    """Считает количество подсказок по скрытому HTML-маркеру."""
+    return sum(1 for c in comments if HINT_MARKER in c["body"])
+
+
 @broker.task
 async def answer_question(
     pr_data: dict,
@@ -43,27 +48,18 @@ async def answer_question(
     pr = PRContext.model_validate(pr_data)
 
     try:
-        # Проверяем лимит ответов
         comments = await get_comments(pr)
-        bot_name = f"{settings.github_app_id}"
-        bot_replies = sum(
-            1
-            for c in comments
-            if c["user"].endswith("[bot]") or c["user"] == bot_name
-            if "направление" in c["body"].lower()
-            or "подсказка" in c["body"].lower()
-            or "попробуй" in c["body"].lower()
-        )
+        used = _count_hints(comments)
 
-        if bot_replies >= MAX_REPLIES:
+        if used >= MAX_HINTS:
             await post_comment(
                 pr,
-                f"@{comment_author} Лимит подсказок ({MAX_REPLIES}) исчерпан. "
-                f"Обратитесь к преподавателю для дальнейших вопросов.",
+                f"@{comment_author} Лимит подсказок ({MAX_HINTS}) исчерпан. "
+                f"Для дальнейших вопросов обратитесь к преподавателю.",
             )
             return
 
-        remaining = MAX_REPLIES - bot_replies - 1
+        remaining = MAX_HINTS - used - 1
 
         llm = get_llm()
         prompt = ANSWER_PROMPT.format(
@@ -80,13 +76,16 @@ async def answer_question(
         )
 
         reply = str(response.content)
-        footer = f"\n\n---\n💡 *Подсказок осталось: {remaining}/{MAX_REPLIES}*"
+        footer = (
+            f"\n\n---\n💡 *Подсказок осталось: {remaining}/{MAX_HINTS}*\n{HINT_MARKER}"
+        )
 
         await post_comment(pr, reply + footer)
         await logger.ainfo(
-            "question_answered",
+            "hint_sent",
             pr=pr.pr_number,
             author=comment_author,
+            used=used + 1,
             remaining=remaining,
         )
 
