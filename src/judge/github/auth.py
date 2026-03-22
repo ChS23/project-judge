@@ -2,8 +2,11 @@ import time
 
 import httpx
 import jwt
+import structlog
 
 from judge.settings import settings
+
+logger = structlog.get_logger()
 
 _token_cache: dict[int, tuple[str, float]] = {}
 
@@ -13,7 +16,7 @@ def _make_jwt() -> str:
     payload = {
         "iat": now - 60,
         "exp": now + 600,
-        "iss": settings.github_app_id,
+        "iss": str(settings.github_app_id),
     }
     return jwt.encode(payload, settings.github_private_key, algorithm="RS256")
 
@@ -39,4 +42,5 @@ async def get_installation_token(installation_id: int) -> str:
     token = data["token"]
     expires_at = time.time() + 3300  # ~55 min
     _token_cache[installation_id] = (token, expires_at)
+    await logger.ainfo("installation_token_acquired", installation_id=installation_id)
     return token

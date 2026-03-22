@@ -1,3 +1,6 @@
+from pathlib import Path
+
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -6,7 +9,8 @@ class Settings(BaseSettings):
 
     # GitHub App
     github_app_id: int
-    github_private_key: str
+    github_private_key: str = ""
+    github_private_key_path: str = ""
     github_webhook_secret: str
 
     # Z.AI / GLM
@@ -33,6 +37,14 @@ class Settings(BaseSettings):
     roster_cache_ttl: int = 300
     sandbox_timeout: int = 600
     spec_base_url: str = ""
+
+    @model_validator(mode="after")
+    def _load_private_key(self):
+        if not self.github_private_key and self.github_private_key_path:
+            path = Path(self.github_private_key_path)
+            if path.exists():
+                self.github_private_key = path.read_text()
+        return self
 
 
 settings = Settings()  # type: ignore[missing-argument]

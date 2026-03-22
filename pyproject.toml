@@ -17,8 +17,17 @@ dependencies = [
     "pyjwt>=2.12.1",
     "python-dotenv>=1.2.2",
     "taskiq>=0.12.1",
+    "structlog",
     "taskiq-redis>=1.2.2",
+    "langchain>=1.2.13",
 ]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/judge"]
 
 [project.optional-dependencies]
 dev = [
@@ -62,6 +71,8 @@ ignore = [
 "tests/**" = ["S", "ARG"]
 "src/judge/agent/tools/**" = ["ARG001"]
 "src/judge/sheets/**" = ["ARG001"]
+"src/judge/agent/**" = ["E501"]
+"scripts/**" = ["S110", "E501", "ASYNC230"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -101,3 +112,10 @@ invalid-argument-type = "ignore"
 missing-typed-dict-key = "ignore"
 invalid-key = "ignore"
 unknown-argument = "ignore"
+
+[[tool.ty.overrides]]
+include = ["scripts/**"]
+
+[tool.ty.overrides.rules]
+not-subscriptable = "ignore"
+invalid-argument-type = "ignore"

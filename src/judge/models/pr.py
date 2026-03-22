@@ -26,7 +26,7 @@ class PRContext(BaseModel):
             sender=pr["user"]["login"],
             branch=pr["head"]["ref"],
             head_sha=pr["head"]["sha"],
-            body=pr.get("body", ""),
+            body=pr.get("body") or "",
             created_at=pr["created_at"],
             installation_id=data["installation"]["id"],
         )

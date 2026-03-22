@@ -19,5 +19,9 @@ build/
 .vscode/
 *.swp
 
+# Secrets
+*.pem
+service-account.json
+
 # OS
 .DS_Store

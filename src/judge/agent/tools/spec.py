@@ -11,6 +11,9 @@ async def fetch_spec(lab_id: int) -> dict:
     Args:
         lab_id: Номер лабораторной работы (1-5)
     """
+    if not settings.spec_base_url:
+        return {"lab_id": lab_id, "error": "spec_base_url not configured"}
+
     url = f"{settings.spec_base_url}/lab{lab_id}"
 
     async with httpx.AsyncClient(timeout=30) as client:
