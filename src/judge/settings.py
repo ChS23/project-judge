@@ -28,7 +28,8 @@ class Settings(BaseSettings):
 
     # Google Sheets
     google_service_account_json: str = ""
-    spreadsheet_id: str = ""
+    spreadsheet_id: str = ""  # fallback если нет маппинга
+    spreadsheet_map: str = ""  # JSON: {"bachelor-2025": "id1", "master-2025": "id2"}
 
     # E2B
     e2b_api_key: str = ""

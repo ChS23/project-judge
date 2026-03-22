@@ -1,7 +1,8 @@
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
-from langgraph.graph import START, MessagesState, StateGraph
-from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.graph import END, START, MessagesState, StateGraph
+from langgraph.prebuilt import ToolNode
+from pydantic import BaseModel, Field
 
 from judge.github.auth import get_installation_token
 from judge.llm.client import get_llm
@@ -31,17 +32,22 @@ REVIEWER_PROMPT = """\
 - Рабочая директория: /home/user/repo
 - Если команда зависла — попробуй с timeout или другой подход
 - Не модифицируй код студента
-- Верни структурированный отчёт о результатах
-
-## Формат ответа
-
-В конце верни отчёт:
-- **Структура проекта:** краткое описание
-- **Сборка:** pass/fail + детали
-- **Тесты:** pass/fail/not found + вывод
-- **Сервисы:** какие поднялись, health check результаты
-- **Проблемы:** что не работает и почему
 """
+
+
+class SandboxReport(BaseModel):
+    """Структурированный отчёт суб-агента по проверке кода."""
+
+    project_structure: str = Field(description="Краткое описание структуры проекта")
+    build_status: str = Field(description="pass / fail / skipped")
+    build_details: str = Field(description="Детали сборки: команда, ошибки, warnings")
+    tests_status: str = Field(description="pass / fail / not_found / skipped")
+    tests_output: str = Field(description="Вывод тестов (первые 3000 символов)")
+    services: list[str] = Field(
+        description="Список поднятых сервисов и их статус health check"
+    )
+    issues: list[str] = Field(description="Найденные проблемы")
+    summary: str = Field(description="Общий вывод в 2-3 предложения")
 
 
 def _make_sandbox_tools(sandbox):
@@ -94,19 +100,45 @@ def _build_code_reviewer(sandbox):
     """Собирает tool-use loop агент для code review внутри sandbox."""
     tools = _make_sandbox_tools(sandbox)
     llm = get_llm()
-    llm_with_tools = llm.bind_tools(tools)
+    tool_llm = llm.bind_tools(tools)
+    format_llm = llm.with_structured_output(SandboxReport)
 
     async def agent_node(state: MessagesState) -> dict:
         messages = [SystemMessage(content=REVIEWER_PROMPT), *state["messages"]]
-        response = await llm_with_tools.ainvoke(messages)
+        response = await tool_llm.ainvoke(messages)
         return {"messages": [response]}
+
+    async def format_node(state: MessagesState) -> dict:
+        messages = [
+            SystemMessage(
+                content="Сформируй структурированный отчёт на основе всей собранной информации."
+            ),
+            *state["messages"],
+        ]
+        report = await format_llm.ainvoke(messages)
+        return {"messages": [HumanMessage(content=report.model_dump_json())]}
+
+    def should_continue(state: MessagesState) -> str:
+        last = state["messages"][-1]
+        if hasattr(last, "tool_calls") and last.tool_calls:
+            return "tools"
+        return "format"
 
     graph = StateGraph(MessagesState)
     graph.add_node("reviewer", agent_node)
     graph.add_node("tools", ToolNode(tools))
+    graph.add_node("format", format_node)
     graph.add_edge(START, "reviewer")
-    graph.add_conditional_edges("reviewer", tools_condition)
+    graph.add_conditional_edges(
+        "reviewer",
+        should_continue,
+        {
+            "tools": "tools",
+            "format": "format",
+        },
+    )
     graph.add_edge("tools", "reviewer")
+    graph.add_edge("format", END)
 
     return graph.compile()
 

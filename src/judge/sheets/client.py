@@ -1,52 +1,108 @@
 import json
-import logging
+from pathlib import Path
 
+import structlog
 from aiogoogle import Aiogoogle
 from aiogoogle.auth.creds import ServiceAccountCreds
 
 from judge.settings import settings
 from judge.sheets.cache import roster_cache, rubrics_cache
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
 
+def resolve_spreadsheet_id(repo: str) -> str | None:
+    """Определить spreadsheet_id по имени репозитория.
+
+    Матчит repo name по префиксу из SPREADSHEET_MAP.
+    Например: repo="vstu-sii/bachelor-2025-team-x" → prefix="bachelor-2025" → id.
+    """
+    if settings.spreadsheet_map:
+        mapping = json.loads(settings.spreadsheet_map)
+        repo_name = repo.split("/")[-1] if "/" in repo else repo
+        for prefix, sid in mapping.items():
+            if repo_name.startswith(prefix):
+                return sid
+
+    return settings.spreadsheet_id or None
+
+
+# Маппинг русских заголовков → внутренние ключи
+ROSTER_COLUMNS = {
+    "GitHub Username": "github_username",
+    "ФИО": "full_name",
+    "Группа": "group_id",
+    "Команда": "team_name",
+    "Роль": "role",
+    "Тема": "topic",
+}
+
+RUBRICS_COLUMNS = {
+    "Лаба": "lab_id",
+    "Deliverable": "deliverable_id",
+    "Роль": "role",
+    "Критерий": "criterion",
+    "Макс. балл": "max_score",
+    "Вес": "weight",
+}
+
+DEADLINES_COLUMNS = {
+    "Лаба": "lab_id",
+    "Группа": "group_id",
+    "Дедлайн": "due_at",
+}
+
+
 def _get_creds() -> ServiceAccountCreds | None:
-    if not settings.google_service_account_json:
+    sa = settings.google_service_account_json
+    if not sa:
         return None
-    key = json.loads(settings.google_service_account_json)
+
+    key = json.loads(sa) if sa.startswith("{") else json.loads(Path(sa).read_text())
+
     return ServiceAccountCreds(scopes=SCOPES, **key)
 
 
-async def _get_values(range_: str) -> list[list[str]]:
+def _normalize_row(header: list[str], row: list[str], column_map: dict) -> dict:
+    """Превращает строку таблицы в dict с нормализованными ключами."""
+    result = {}
+    for i, col_name in enumerate(header):
+        if i < len(row):
+            key = column_map.get(col_name, col_name)
+            result[key] = row[i]
+    return result
+
+
+async def _get_values(sid: str, range_: str) -> list[list[str]]:
     creds = _get_creds()
     if not creds:
-        logger.warning("Google Sheets not configured")
+        await logger.awarning("sheets_not_configured")
         return []
 
     async with Aiogoogle(service_account_creds=creds) as ag:
         sheets = await ag.discover("sheets", "v4")
         resp = await ag.as_service_account(
             sheets.spreadsheets.values.get(
-                spreadsheetId=settings.spreadsheet_id,
+                spreadsheetId=sid,
                 range=range_,
             )
         )
-    return resp.get("values", [])
+    return resp.get("values", [])  # type: ignore[union-attr]
 
 
-async def _append_values(range_: str, values: list[list[str]]) -> None:
+async def _append_values(sid: str, range_: str, values: list[list[str]]) -> None:
     creds = _get_creds()
     if not creds:
-        logger.warning("Google Sheets not configured, skipping write")
+        await logger.awarning("sheets_not_configured", action="write_skipped")
         return
 
     async with Aiogoogle(service_account_creds=creds) as ag:
         sheets = await ag.discover("sheets", "v4")
         await ag.as_service_account(
             sheets.spreadsheets.values.append(
-                spreadsheetId=settings.spreadsheet_id,
+                spreadsheetId=sid,
                 range=range_,
                 valueInputOption="USER_ENTERED",
                 json={"values": values},
@@ -54,43 +110,54 @@ async def _append_values(range_: str, values: list[list[str]]) -> None:
         )
 
 
-async def read_roster(github_username: str) -> dict | None:
+async def read_roster(repo: str, github_username: str) -> dict | None:
     """Прочитать запись студента из вкладки roster."""
-    cached = roster_cache.get(f"roster:{github_username}")
+    cached = roster_cache.get(f"roster:{repo}:{github_username}")
     if cached:
         return cached
 
-    rows = await _get_values("roster!A:F")
-    if not rows:
+    sid = resolve_spreadsheet_id(repo)
+    if not sid:
+        await logger.awarning("no_spreadsheet_for_repo", repo=repo)
         return None
 
-    # Header: github_username | full_name | group_id | team_name | role | topic
+    rows = await _get_values(sid, "roster!A:F")
+    if len(rows) < 2:
+        return None
+
     header = rows[0]
     for row in rows[1:]:
-        if len(row) > 0 and row[0] == github_username:
-            record = dict(zip(header, row, strict=False))
-            roster_cache.set(f"roster:{github_username}", record)
+        if not row or not row[0]:
+            continue
+        record = _normalize_row(header, row, ROSTER_COLUMNS)
+        if record.get("github_username") == github_username:
+            roster_cache.set(f"roster:{repo}:{github_username}", record)
             return record
 
     return None
 
 
-async def read_rubrics(lab_id: int, role: str = "*") -> list[dict]:
+async def read_rubrics(repo: str, lab_id: int, role: str = "*") -> list[dict]:
     """Прочитать рубрики для лабы и роли."""
-    cache_key = f"rubrics:{lab_id}:{role}"
+    cache_key = f"rubrics:{repo}:{lab_id}:{role}"
     cached = rubrics_cache.get(cache_key)
     if cached:
         return cached
 
-    rows = await _get_values("rubrics!A:F")
-    if not rows:
+    sid = resolve_spreadsheet_id(repo)
+    if not sid:
         return []
 
-    # Header: lab_id | deliverable_id | role | criterion | max_score | weight
+    rows = await _get_values(sid, "rubrics!A:F")
+    if len(rows) < 2:
+        return []
+
     header = rows[0]
     result = []
     for row in rows[1:]:
-        record = dict(zip(header, row, strict=False))
+        if not row:
+            continue
+        record = _normalize_row(header, row, RUBRICS_COLUMNS)
         if str(record.get("lab_id")) != str(lab_id):
             continue
         row_role = record.get("role", "*")
@@ -102,22 +169,39 @@ async def read_rubrics(lab_id: int, role: str = "*") -> list[dict]:
     return result
 
 
-async def read_deadline(lab_id: int, group_id: str) -> str | None:
+async def read_deadline(repo: str, lab_id: int, group_id: str) -> str | None:
     """Прочитать дедлайн для лабы и группы."""
-    rows = await _get_values("deadlines!A:C")
-    if not rows:
+    sid = resolve_spreadsheet_id(repo)
+    if not sid:
         return None
 
-    # Header: lab_id | group_id | due_at
+    rows = await _get_values(sid, "deadlines!A:C")
+    if len(rows) < 2:
+        return None
+
+    header = rows[0]
     for row in rows[1:]:
-        if len(row) >= 3 and str(row[0]) == str(lab_id) and row[1] == group_id:
-            return row[2]
+        if not row:
+            continue
+        record = _normalize_row(header, row, DEADLINES_COLUMNS)
+        if (
+            str(record.get("lab_id")) == str(lab_id)
+            and record.get("group_id") == group_id
+        ):
+            return record.get("due_at")
 
     return None
 
 
-async def write_result_row(row: dict) -> None:
+async def write_result_row(repo: str, row: dict) -> None:
     """Записать строку результата в вкладку results."""
+    sid = resolve_spreadsheet_id(repo)
+    if not sid:
+        await logger.awarning(
+            "no_spreadsheet_for_repo", repo=repo, action="write_skipped"
+        )
+        return
+
     values = [
         [
             row.get("github_username", ""),
@@ -134,4 +218,4 @@ async def write_result_row(row: dict) -> None:
             row.get("checked_at", ""),
         ]
     ]
-    await _append_values("results!A:L", values)
+    await _append_values(sid, "results!A:L", values)
