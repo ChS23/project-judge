@@ -1,4 +1,7 @@
 import structlog
+from langchain_core.messages import HumanMessage, SystemMessage
+from langgraph.graph import START, MessagesState, StateGraph
+from langgraph.prebuilt import ToolNode, tools_condition
 
 from judge.github.client import get_comments, post_comment
 from judge.llm.client import get_llm
@@ -22,20 +25,43 @@ ANSWER_PROMPT = """\
 - Задавай наводящие вопросы
 - Указывай на конкретные разделы документации или спецификации где искать ответ
 - Если вопрос про оценку — объясни по какому критерию снижен балл и что можно улучшить
+- Если нужно — прочитай файл студента через `read_file` чтобы дать точную подсказку
 - Если вопрос не по теме — вежливо верни к делу
 - Отвечай кратко, 2-4 предложения
 - Отвечай на языке вопроса
-
-## Контекст
-
-Репозиторий: {repo}
-PR: #{pr_number}
-Студент: @{sender}
+- НЕ используй `post_comment` — ответ будет опубликован автоматически
 """
 
 
+def _build_qa_agent(pr: PRContext):
+    from judge.agent.tools.artifacts import make_check_artifacts
+    from judge.agent.tools.read_file import make_read_file
+    from judge.agent.tools.spec import fetch_spec
+
+    tools = [
+        make_check_artifacts(pr),
+        make_read_file(pr),
+        fetch_spec,
+    ]
+
+    llm = get_llm()
+    llm_with_tools = llm.bind_tools(tools)
+
+    async def agent_node(state: MessagesState) -> dict:
+        response = await llm_with_tools.ainvoke(state["messages"])
+        return {"messages": [response]}
+
+    graph = StateGraph(MessagesState)
+    graph.add_node("agent", agent_node)
+    graph.add_node("tools", ToolNode(tools))
+    graph.add_edge(START, "agent")
+    graph.add_conditional_edges("agent", tools_condition)
+    graph.add_edge("tools", "agent")
+
+    return graph.compile(recursion_limit=10)
+
+
 def _count_hints(comments: list[dict]) -> int:
-    """Считает количество подсказок по скрытому HTML-маркеру."""
     return sum(1 for c in comments if HINT_MARKER in c["body"])
 
 
@@ -61,7 +87,6 @@ async def answer_question(
 
         remaining = MAX_HINTS - used - 1
 
-        # Найти последний грейдинг-комментарий бота для контекста
         grading_comment = ""
         for c in reversed(comments):
             if c["user"].endswith("[bot]") and "Результат" in c["body"]:
@@ -70,48 +95,35 @@ async def answer_question(
 
         from judge.agent.graph import _langfuse_handler
 
-        llm = get_llm()
+        config = {}
+        handler = _langfuse_handler()
+        if handler:
+            config["callbacks"] = [handler]
+            config["run_name"] = f"qa-{pr.repo.split('/')[-1]}-{pr.pr_number}"
+            config["metadata"] = {
+                "repo": pr.repo,
+                "pr_number": str(pr.pr_number),
+                "author": comment_author,
+                "type": "qa",
+            }
+
         prompt = ANSWER_PROMPT.format(
             repo=pr.repo,
             pr_number=pr.pr_number,
             sender=pr.sender,
         )
 
-        kwargs = {}
-        handler = _langfuse_handler()
-        if handler:
-            kwargs["config"] = {
-                "callbacks": [handler],
-                "run_name": f"qa-{pr.repo.split('/')[-1]}-{pr.pr_number}",
-                "metadata": {
-                    "repo": pr.repo,
-                    "pr_number": str(pr.pr_number),
-                    "author": comment_author,
-                    "type": "qa",
-                },
-            }
-
-        messages = [
-            {"role": "system", "content": prompt},
-        ]
+        messages = [SystemMessage(content=prompt)]
         if grading_comment:
             messages.append(
-                {
-                    "role": "user",
-                    "content": f"Предыдущая оценка бота:\n\n{grading_comment}",
-                }
+                HumanMessage(content=f"Предыдущая оценка бота:\n\n{grading_comment}")
             )
-            messages.append(
-                {
-                    "role": "assistant",
-                    "content": "Понял контекст оценки. Жду вопрос студента.",
-                }
-            )
-        messages.append({"role": "user", "content": question})
+        messages.append(HumanMessage(content=question))
 
-        response = await llm.ainvoke(messages, **kwargs)
+        agent = _build_qa_agent(pr)
+        result = await agent.ainvoke({"messages": messages}, config=config)
 
-        reply = str(response.content)
+        reply = str(result["messages"][-1].content)
         footer = (
             f"\n\n---\n💡 *Подсказок осталось: {remaining}/{MAX_HINTS}*\n{HINT_MARKER}"
         )
