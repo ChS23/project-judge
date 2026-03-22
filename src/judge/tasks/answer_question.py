@@ -58,7 +58,7 @@ def _build_qa_agent(pr: PRContext):
     graph.add_conditional_edges("agent", tools_condition)
     graph.add_edge("tools", "agent")
 
-    return graph.compile(recursion_limit=10)
+    return graph.compile()
 
 
 def _count_hints(comments: list[dict]) -> int:
@@ -121,6 +121,7 @@ async def answer_question(
         messages.append(HumanMessage(content=question))
 
         agent = _build_qa_agent(pr)
+        config["recursion_limit"] = 10
         result = await agent.ainvoke({"messages": messages}, config=config)
 
         reply = str(result["messages"][-1].content)

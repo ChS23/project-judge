@@ -39,7 +39,7 @@ def build_agent(pr: PRContext):
     graph.add_conditional_edges("agent", tools_condition)
     graph.add_edge("tools", "agent")
 
-    return graph.compile(recursion_limit=30)
+    return graph.compile()
 
 
 async def run_agent(pr: PRContext) -> str:
@@ -58,6 +58,7 @@ async def run_agent(pr: PRContext) -> str:
         "branch": pr.branch,
     }
 
+    config["recursion_limit"] = 30
     result = await agent.ainvoke(
         {"messages": [HumanMessage(content=f"Проверь PR #{pr.pr_number}")]},
         config=config,
