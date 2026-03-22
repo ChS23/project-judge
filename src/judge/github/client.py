@@ -159,3 +159,20 @@ async def get_pr_files(pr: PRContext) -> list[str]:
     async for item in gh.getiter(f"/repos/{pr.repo}/pulls/{pr.pr_number}/files"):
         files.append(item["filename"])
     return files
+
+
+async def get_file_content(pr: PRContext, path: str) -> str | None:
+    """Прочитать содержимое файла из репозитория (ветка PR)."""
+    gh = await _gh(pr)
+    try:
+        resp = await gh.getitem(
+            f"/repos/{pr.repo}/contents/{path}",
+            url_vars={"ref": pr.head_sha},
+        )
+        if resp.get("encoding") == "base64":
+            import base64
+
+            return base64.b64decode(resp["content"]).decode(errors="replace")
+        return resp.get("content", "")
+    except Exception:
+        return None

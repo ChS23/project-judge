@@ -68,12 +68,28 @@ async def answer_question(
                 grading_comment = c["body"][:3000]
                 break
 
+        from judge.agent.graph import _langfuse_handler
+
         llm = get_llm()
         prompt = ANSWER_PROMPT.format(
             repo=pr.repo,
             pr_number=pr.pr_number,
             sender=pr.sender,
         )
+
+        kwargs = {}
+        handler = _langfuse_handler()
+        if handler:
+            kwargs["config"] = {
+                "callbacks": [handler],
+                "run_name": f"qa-{pr.repo.split('/')[-1]}-{pr.pr_number}",
+                "metadata": {
+                    "repo": pr.repo,
+                    "pr_number": str(pr.pr_number),
+                    "author": comment_author,
+                    "type": "qa",
+                },
+            }
 
         messages = [
             {"role": "system", "content": prompt},
@@ -93,7 +109,7 @@ async def answer_question(
             )
         messages.append({"role": "user", "content": question})
 
-        response = await llm.ainvoke(messages)
+        response = await llm.ainvoke(messages, **kwargs)
 
         reply = str(response.content)
         footer = (
