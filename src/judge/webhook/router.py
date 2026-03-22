@@ -46,16 +46,36 @@ async def on_comment(event: Event) -> None:
         return
 
     issue = data["issue"]
+
+    # Получить head_sha из PR API (issue_comment не содержит PR details)
+    from judge.github.auth import get_installation_token
+
+    installation_id = data["installation"]["id"]
+    token = await get_installation_token(installation_id)
+    repo = data["repository"]["full_name"]
+
+    import httpx
+
+    async with httpx.AsyncClient() as client:
+        pr_resp = await client.get(
+            f"https://api.github.com/repos/{repo}/pulls/{issue['number']}",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+            },
+        )
+        pr_data = pr_resp.json()
+
     pr = PRContext(
-        repo=data["repository"]["full_name"],
+        repo=repo,
         pr_number=issue["number"],
         pr_url=issue["html_url"],
         sender=author,
-        branch="",
-        head_sha="",
+        branch=pr_data.get("head", {}).get("ref", ""),
+        head_sha=pr_data.get("head", {}).get("sha", ""),
         body=issue.get("body") or "",
         created_at=issue["created_at"],
-        installation_id=data["installation"]["id"],
+        installation_id=installation_id,
     )
 
     await logger.ainfo(

@@ -165,9 +165,9 @@ async def get_file_content(pr: PRContext, path: str) -> str | None:
     """Прочитать содержимое файла из репозитория (ветка PR)."""
     gh = await _gh(pr)
     try:
+        ref = pr.head_sha or pr.branch
         resp = await gh.getitem(
-            f"/repos/{pr.repo}/contents/{path}",
-            url_vars={"ref": pr.head_sha},
+            f"/repos/{pr.repo}/contents/{path}?ref={ref}",
         )
         if resp.get("encoding") == "base64":
             import base64
