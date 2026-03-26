@@ -29,11 +29,35 @@ ANSWER_PROMPT = """\
 - Если нужно — прочитай файл студента через `read_file` чтобы дать точную подсказку
 - НЕ привязывайся к именам файлов — студент мог назвать файл иначе
 - Если требуемая информация есть в файле с другим именем — это нормально
+- Если студент сообщает что исправил замечания и просит перепроверить — \
+вызови `trigger_recheck` и сообщи что перепроверка запущена
 - Если вопрос не по теме — вежливо верни к делу
 - Отвечай кратко, 2-4 предложения
 - Отвечай на языке вопроса
 - НЕ используй `post_comment` — ответ будет опубликован автоматически
 """
+
+
+def _make_trigger_recheck(pr: PRContext):
+    from langchain_core.tools import tool
+
+    @tool
+    async def trigger_recheck() -> str:
+        """Запустить перепроверку PR.
+
+        Вызывай когда студент явно или неявно просит перепроверить работу:
+        - "Исправил, перепроверьте"
+        - "Поправил замечания"
+        - "Готово, можно проверять"
+        - "Done, re-review please"
+        - Любая формулировка означающая что студент внёс исправления и ждёт новой оценки
+        """
+        from judge.tasks.grade_pr import grade_pr
+
+        await grade_pr.kiq(pr)
+        return "Перепроверка запущена. Результат появится в PR через несколько минут."
+
+    return trigger_recheck
 
 
 def _build_qa_agent(pr: PRContext):
@@ -45,6 +69,7 @@ def _build_qa_agent(pr: PRContext):
         make_check_artifacts(pr),
         make_read_file(pr),
         fetch_spec,
+        _make_trigger_recheck(pr),
     ]
 
     llm = get_llm()
@@ -78,23 +103,16 @@ async def answer_question(
 
     try:
         comments = await get_comments(pr)
-        used = _count_hints(comments)
-
-        if used >= MAX_HINTS:
-            await post_comment(
-                pr,
-                f"@{comment_author} Лимит подсказок ({MAX_HINTS}) исчерпан. "
-                f"Для дальнейших вопросов обратитесь к преподавателю.",
-            )
-            return
-
-        remaining = MAX_HINTS - used - 1
 
         grading_comment = ""
         for c in reversed(comments):
             if c["user"].endswith("[bot]") and "Результат" in c["body"]:
                 grading_comment = c["body"][:3000]
                 break
+
+        used = _count_hints(comments)
+        hints_exhausted = used >= MAX_HINTS
+        remaining = max(0, MAX_HINTS - used - 1)
 
         from judge.agent.graph import _langfuse_handler
 
@@ -110,11 +128,14 @@ async def answer_question(
                 "type": "qa",
             }
 
-        prompt = ANSWER_PROMPT.format(
-            repo=pr.repo,
-            pr_number=pr.pr_number,
-            sender=pr.sender,
-        )
+        prompt = ANSWER_PROMPT
+        if hints_exhausted:
+            prompt += (
+                "\n\n## Лимит подсказок исчерпан\n"
+                "Студент исчерпал лимит подсказок. "
+                "Если он просит перепроверку — вызови `trigger_recheck`. "
+                "На вопросы отвечай кратко: лимит исчерпан, обратитесь к преподавателю."
+            )
 
         messages = [SystemMessage(content=prompt)]
         if grading_comment:
@@ -128,18 +149,33 @@ async def answer_question(
         result = await agent.ainvoke({"messages": messages}, config=config)
 
         reply = str(result["messages"][-1].content)
-        footer = (
-            f"\n\n---\n💡 *Подсказок осталось: {remaining}/{MAX_HINTS}*\n{HINT_MARKER}"
+
+        # Если агент вызвал trigger_recheck — не считаем как хинт
+        was_recheck = any(
+            getattr(m, "name", None) == "trigger_recheck" for m in result["messages"]
         )
 
-        await post_comment(pr, reply + footer)
-        await logger.ainfo(
-            "hint_sent",
-            pr=pr.pr_number,
-            author=comment_author,
-            used=used + 1,
-            remaining=remaining,
-        )
+        if was_recheck:
+            await post_comment(pr, reply)
+            await logger.ainfo(
+                "recheck_triggered_via_qa",
+                pr=pr.pr_number,
+                author=comment_author,
+            )
+        else:
+            footer = (
+                f"\n\n---\n"
+                f"💡 *Подсказок осталось: {remaining}/{MAX_HINTS}*\n"
+                f"{HINT_MARKER}"
+            )
+            await post_comment(pr, reply + footer)
+            await logger.ainfo(
+                "hint_sent",
+                pr=pr.pr_number,
+                author=comment_author,
+                used=used + 1,
+                remaining=remaining,
+            )
 
     except Exception:
         await logger.aexception("answer_question_failed", pr=pr.pr_number)

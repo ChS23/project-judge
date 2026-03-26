@@ -1,0 +1,107 @@
+@startuml data-flow
+title Data Flow Diagram
+
+' Sources
+rectangle "GitHub" as gh {
+    card "Webhook payload" as wh_payload
+    card "PR files (diff)" as pr_files
+    card "File content (base64)" as file_content
+    card "PR diff hunks" as diff_hunks
+}
+
+rectangle "Google Sheets" as gs {
+    card "Roster sheet" as roster_sheet
+    card "Rubrics sheet" as rubrics_sheet
+    card "Deadlines sheet" as deadlines_sheet
+    card "Results sheet" as results_sheet
+}
+
+rectangle "External" as ext {
+    card "Lab spec page (HTML)" as spec_html
+    card "Z.AI LLM responses" as llm_resp
+    card "E2B sandbox output" as sandbox_out
+}
+
+' System
+rectangle "Project Judge" as pj {
+
+    rectangle "Ingress" as ingress {
+        card "PRContext" as pr_ctx
+        card "StudentRecord" as student_rec
+    }
+
+    rectangle "Processing" as proc {
+        card "Artifact check result" as artifact_res
+        card "File text (sanitized)" as file_text
+        card "DoD completion" as dod_res
+        card "Penalty coefficient" as penalty
+        card "Content scores" as content_scores
+        card "SandboxReport" as sandbox_report
+    }
+
+    rectangle "Output" as output {
+        card "PR comment (markdown)" as pr_comment
+        card "Inline review comments" as inline_comments
+        card "Results row" as results_row
+        card "Labels" as labels
+    }
+
+    rectangle "Observability" as obs {
+        card "Langfuse traces" as traces
+        card "structlog events" as logs
+    }
+}
+
+' Data flows - Ingress
+wh_payload --> pr_ctx : parse event
+roster_sheet --> student_rec : read_roster(sender)
+rubrics_sheet ..> content_scores : criteria for evaluation
+deadlines_sheet ..> penalty : deadline date
+
+' Data flows - Processing
+pr_files --> artifact_res : check_artifacts
+file_content --> file_text : read_file + sanitize
+pr_ctx --> dod_res : parse_dod(pr.body)
+pr_ctx --> penalty : check_deadline(pr.created_at)
+spec_html --> proc : fetch_spec -> deliverables, DoD
+file_text --> content_scores : evaluate_content
+llm_resp --> content_scores : LLM evaluation
+sandbox_out --> sandbox_report : run_command, read_file -> format
+
+' Data flows - Output
+content_scores --> pr_comment : format report
+sandbox_report --> pr_comment : append code review
+sandbox_report --> inline_comments : post_review
+penalty --> pr_comment : final score calculation
+pr_comment --> gh : post_comment
+inline_comments --> diff_hunks : filter by diff lines
+inline_comments --> gh : post PR review
+content_scores --> results_row
+penalty --> results_row
+results_row --> results_sheet : write_result_row
+labels --> gh : add_label
+
+' Observability
+proc --> traces : LLM calls via callback
+proc --> logs : tool results, errors
+
+note bottom of pr_ctx
+  Immutable fields:
+  created_at, head_sha,
+  installation_id
+end note
+
+note bottom of sandbox_report
+  Structured output:
+  build_status, tests_status,
+  code_quality_issues,
+  inline_comments[]
+end note
+
+note right of inline_comments
+  Filtered: only lines
+  present in PR diff
+  (RIGHT side)
+end note
+
+@enduml

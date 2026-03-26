@@ -47,7 +47,7 @@ async def on_comment(event: Event) -> None:
 
     issue = data["issue"]
 
-    # Получить head_sha из PR API (issue_comment не содержит PR details)
+    # Получить PR details (issue_comment webhook не содержит их)
     from judge.github.auth import get_installation_token
 
     installation_id = data["installation"]["id"]
@@ -66,11 +66,13 @@ async def on_comment(event: Event) -> None:
         )
         pr_data = pr_resp.json()
 
+    pr_author = pr_data.get("user", {}).get("login", "")
+
     pr = PRContext(
         repo=repo,
         pr_number=issue["number"],
         pr_url=issue["html_url"],
-        sender=author,
+        sender=pr_author,
         branch=pr_data.get("head", {}).get("ref", ""),
         head_sha=pr_data.get("head", {}).get("sha", ""),
         body=issue.get("body") or "",
@@ -79,9 +81,9 @@ async def on_comment(event: Event) -> None:
     )
 
     await logger.ainfo(
-        "question_received",
+        "comment_received",
         pr=pr.pr_number,
         author=author,
-        question=body[:100],
+        body=body[:100],
     )
     await answer_question.kiq(pr.model_dump(), body, author)

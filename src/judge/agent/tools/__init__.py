@@ -3,6 +3,7 @@ from judge.agent.tools.comment import make_escalate, make_post_comment
 from judge.agent.tools.content import evaluate_content
 from judge.agent.tools.deadline import check_deadline
 from judge.agent.tools.dod import parse_dod
+from judge.agent.tools.past_reviews import make_read_past_reviews
 from judge.agent.tools.read_file import make_read_file
 from judge.agent.tools.results import make_write_results
 from judge.agent.tools.roster import make_read_roster
@@ -17,6 +18,7 @@ def get_all_tools(pr: PRContext):
         fetch_spec,
         make_check_artifacts(pr),
         make_read_file(pr),
+        make_read_past_reviews(pr),
         parse_dod,
         check_deadline,
         evaluate_content,
