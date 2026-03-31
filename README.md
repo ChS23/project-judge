@@ -1,5 +1,26 @@
 # MAS для автоматической проверки студенческих проектов
 
+## Architecture Metrics
+
+> Validated with [aact](https://github.com/ChS23/aact) (Architecture As Code Tools)
+
+| Metric | Value |
+|--------|-------|
+| Elements | 10 |
+| Sync API calls | 9 |
+| Databases | 1 |
+| Boundary cohesion | 2 internal / 5 external |
+| Rules passed | acyclic, cohesion, stableDependencies, commonReuse |
+| Violations | 0 |
+
+```bash
+# Validate architecture
+cd docs/diagrams && pnpx aact check
+
+# View metrics
+cd docs/diagrams && pnpx aact analyze
+```
+
 ## Что за задача и какая боль сейчас
 
 Преподаватель курса тратит **20-30 минут на ручную проверку одного PR** от студента: проверить наличие артефактов, оценить качество документов по рубрикам, посчитать штрафы за просрочку, оставить развёрнутый комментарий. При потоке 30-40 студентов на 7 лабораторных — это сотни часов рутины за семестр.
