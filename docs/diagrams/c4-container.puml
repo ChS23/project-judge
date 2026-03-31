@@ -1,43 +1,37 @@
 @startuml c4-container
 !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
 
-title Container Diagram: Project Judge
+LAYOUT_WITH_LEGEND()
+
+title Container diagram for Project Judge
 
 Person(student, "Student")
 Person(instructor, "Instructor")
 
 System_Boundary(judge, "Project Judge") {
-    Container(webhook, "Webhook Server", "Python / Granian", "ASGI app: signature verify, event routing, /health")
-    Container(worker, "Task Worker", "Python / Taskiq", "Async grading pipeline, Q&A agent")
-    Container(agent, "Grading Agent", "LangGraph", "Tool-use loop: orchestrates all checks")
-    Container(sandbox_agent, "Code Review Agent", "LangGraph + E2B", "Sub-agent: tool-use loop inside sandbox")
-    Container(content_agent, "Content Evaluator", "LangGraph", "Sub-agent: document quality scoring")
-    ContainerDb(redis, "Redis", "Task queue + broker")
+    Container(app, "Webhook Service", "Python, Granian", "Receives GitHub webhooks, verifies HMAC signature, enqueues grading tasks")
+    Container(worker, "Task Worker", "Python, Taskiq", "Runs LangGraph grading agent and Q&A agent with tool-use loop")
+    ContainerDb(redis, "Redis", "Redis 7", "Message broker for async task dispatch")
 }
 
-System_Ext(github, "GitHub API")
-System_Ext(zai, "Z.AI API")
-System_Ext(e2b, "E2B Sandbox API")
-System_Ext(sheets, "Google Sheets API")
-System_Ext(langfuse, "Langfuse")
-System_Ext(spec_site, "Lab Spec Site")
+System_Ext(github, "GitHub", "Repos, PRs, webhooks, code review API")
+System_Ext(zai, "Z.AI", "GLM-4.7 LLM inference")
+System_Ext(e2b, "E2B", "Firecracker sandbox API")
+System_Ext(sheets, "Google Sheets", "Roster, rubrics, deadlines, results")
+System_Ext(langfuse, "Langfuse", "LLM tracing")
 
-Rel(student, github, "Opens PR")
-Rel(github, webhook, "POST /webhook")
-Rel(webhook, redis, "Enqueue task")
-Rel(redis, worker, "Dequeue task")
-Rel(worker, agent, "run_agent(PRContext)")
-Rel(agent, content_agent, "evaluate_content()")
-Rel(agent, sandbox_agent, "review_code()")
-Rel(agent, github, "Read files, post comments, add labels")
-Rel(agent, sheets, "Read roster/rubrics, write results")
-Rel(agent, spec_site, "Fetch lab spec")
-Rel(agent, zai, "LLM calls (main loop)")
-Rel(content_agent, zai, "LLM call (evaluation)")
-Rel(sandbox_agent, zai, "LLM calls (code review loop)")
-Rel(sandbox_agent, e2b, "Create sandbox, run commands")
-Rel(worker, langfuse, "Traces (async callback)")
+Rel(student, github, "Pushes code and opens PR")
 Rel(instructor, github, "Reviews escalated PRs")
-Rel(instructor, sheets, "Manages rubrics")
+Rel(instructor, sheets, "Edits rubrics and deadlines")
+
+Rel(github, app, "Sends webhook on PR event", "HTTPS")
+Rel(app, redis, "Enqueues grade_pr and answer_question tasks")
+Rel(worker, redis, "Dequeues and executes tasks")
+
+Rel(worker, github, "Reads files, posts comments, creates inline reviews", "HTTPS")
+Rel(worker, zai, "Sends prompts for grading and content evaluation", "HTTPS")
+Rel(worker, e2b, "Creates sandbox, runs build and tests, destroys sandbox", "HTTPS")
+Rel(worker, sheets, "Reads roster and rubrics, writes grading results", "HTTPS")
+Rel(worker, langfuse, "Sends LLM call traces", "HTTPS")
 
 @enduml

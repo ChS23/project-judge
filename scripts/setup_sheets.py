@@ -46,6 +46,11 @@ C_PURPLE_TAB = {"red": 0.61, "green": 0.28, "blue": 0.85}
 C_PURPLE_HEADER = {"red": 0.90, "green": 0.83, "blue": 0.96}
 C_PURPLE_BAND = {"red": 0.95, "green": 0.93, "blue": 0.99}
 
+# Золотая палитра (leaderboard)
+C_GOLD_TAB = {"red": 0.91, "green": 0.73, "blue": 0.15}
+C_GOLD_HEADER = {"red": 0.99, "green": 0.95, "blue": 0.80}
+C_GOLD_BAND = {"red": 1.0, "green": 0.98, "blue": 0.91}
+
 # Конфигурация вкладок
 SHEETS_CONFIG = {
     "students": {
@@ -135,6 +140,15 @@ SHEETS_CONFIG = {
         "tab_color": C_PURPLE_TAB,
         "header_bg": C_PURPLE_HEADER,
         "band_color": C_PURPLE_BAND,
+        "editable": False,
+    },
+    "leaderboard": {
+        "headers": ["#", "Команда", "Участники", "Лабы сдано", "Суммарный балл"],
+        "col_widths": [50, 250, 100, 100, 130],
+        "note": "Обновляется автоматически после каждой проверки. НЕ РЕДАКТИРОВАТЬ!",
+        "tab_color": C_GOLD_TAB,
+        "header_bg": C_GOLD_HEADER,
+        "band_color": C_GOLD_BAND,
         "editable": False,
     },
 }
