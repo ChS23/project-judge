@@ -1,0 +1,139 @@
+@startuml workflow
+title Grading Workflow (including error branches and recheck)
+
+|Webhook|
+start
+:Receive POST /webhook;
+:Verify HMAC signature;
+if (Signature valid?) then (yes)
+    :Parse event (pull_request / issue_comment);
+else (no)
+    :Return 401;
+    stop
+endif
+
+if (Event = pull_request\nopened/synchronize?) then (yes)
+    :Build PRContext from payload;
+    :Enqueue **grade_pr** task;
+    :Return 202 Accepted;
+else (no)
+    if (Event = issue_comment\non PR?) then (yes)
+        :Fetch full PR data via API;
+        :Enqueue **answer_question** task;
+        :Return 202 Accepted;
+    else (no)
+        :Return 200 (ignored);
+        stop
+    endif
+endif
+
+|Worker|
+:Dequeue task from Redis;
+
+if (Task = grade_pr?) then (yes)
+    :build_agent(PRContext);
+    :Start agent tool-use loop;
+
+    |Agent Loop|
+    :read_past_reviews();
+    note right
+        First step!
+        If past reviews exist
+        -> this is a recheck
+    end note
+
+    :read_roster(sender);
+    note right: fallback: use branch name\nfor lab_id/role
+
+    :fetch_spec(lab_id, role);
+    if (Spec page unavailable?) then (yes)
+        note right: agent continues\nwith partial info
+    endif
+
+    :check_artifacts(expected_files);
+    :read_file(path) x N;
+
+    :parse_dod(pr_body);
+    :check_deadline(created_at, deadline);
+
+    :evaluate_content(text, criteria) x N;
+    note right
+        Sub-agent:
+        sanitize -> detect injection
+        -> LLM evaluation -> scores
+    end note
+
+    if (Lab requires code check?) then (yes)
+        :review_code(task);
+        note right
+            Sub-agent (E2B sandbox):
+            clone repo -> list files
+            -> read code -> run build
+            -> run tests -> check health
+            -> format SandboxReport
+            -> post inline PR review
+        end note
+
+        if (Sandbox error?) then (yes)
+            :escalate("sandbox error");
+        endif
+    endif
+
+    :post_comment(formatted report);
+    note right
+        If recheck: includes
+        "fixed / not fixed"
+        diff vs past review
+    end note
+
+    :write_results(scores -> Sheets);
+
+    if (Score 40-60%?) then (yes)
+        :escalate("borderline score");
+    endif
+    if (Injection detected?) then (yes)
+        :escalate("injection detected");
+    endif
+
+    |Worker|
+    :Add label "graded";
+
+else (no)
+    |Q&A Agent|
+    :Load context: last grading comment;
+    :Build Q&A agent with tools;
+    note right
+        Tools: check_artifacts,
+        read_file, fetch_spec,
+        **trigger_recheck**
+    end note
+
+    if (Hints exhausted?) then (yes)
+        :Add prompt: "limit reached,\nonly recheck allowed";
+    endif
+
+    :Agent processes comment;
+
+    if (Intent = recheck?) then (yes)
+        :trigger_recheck();
+        note right: enqueues grade_pr\n(does NOT count as hint)
+        :Post reply: "Recheck started";
+    else (no)
+        :Generate hint reply;
+        :Post reply + hint counter;
+    endif
+endif
+
+if (Task error?) then (yes)
+    :Post error comment in PR;
+    :Add label "grading-error";
+    if (Retries left?) then (yes)
+        :Re-enqueue task;
+    else (no)
+        :Log error, stop;
+    endif
+endif
+
+stop
+
+@enduml

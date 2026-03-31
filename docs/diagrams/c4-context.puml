@@ -1,0 +1,29 @@
+@startuml c4-context
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+title System Context: Project Judge
+
+Person(student, "Student", "Submits PR with lab deliverables")
+Person(instructor, "Instructor", "Reviews escalated PRs, manages rubrics")
+
+System(judge, "Project Judge", "Automated grading system for student PRs")
+
+System_Ext(github, "GitHub", "Repos, PRs, webhooks")
+System_Ext(zai, "Z.AI API", "GLM-4.7 LLM inference")
+System_Ext(e2b, "E2B", "Firecracker sandbox")
+System_Ext(sheets, "Google Sheets", "Roster, rubrics, deadlines, results")
+System_Ext(langfuse, "Langfuse", "LLM observability")
+System_Ext(spec_site, "Lab Spec Site", "Lab specifications")
+
+Rel(student, github, "Opens PR")
+Rel(github, judge, "Webhook: pull_request, issue_comment")
+Rel(judge, github, "Comments, labels, read files")
+Rel(judge, zai, "LLM inference (OpenAI-compat)")
+Rel(judge, e2b, "Create/destroy sandboxes")
+Rel(judge, sheets, "Read roster/rubrics, write results")
+Rel(judge, langfuse, "Traces (async)")
+Rel(judge, spec_site, "Fetch lab specs (HTTP)")
+Rel(instructor, sheets, "Manage rubrics, deadlines")
+Rel(instructor, github, "Review escalated PRs")
+
+@enduml

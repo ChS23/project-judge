@@ -44,11 +44,11 @@ HTTP check с 3 повторными попытками через 30 секун
 **Технические (SLO):**
 - E2B sandbox timeout: 20 минут на один прогон (ограничение плана)
 - Параллельность: до 20 sandbox одновременно (Hobby план E2B)
-- Claude API: rate limits Anthropic, буфер очереди при массовой сдаче
+- GLM API: rate limits Z.AI, буфер очереди при массовой сдаче
 - GitHub Actions: 2000 минут/месяц на организацию (публичные репо — бесплатно)
 
 **Операционные:**
-- Бюджет: E2B Hobby ($100 кредит), Claude API ~$5–15 за семестровый поток
+- Бюджет: E2B Hobby ($100 кредит), GLM API (Z.AI Coding Plan)
 - Студенческие репо должны быть публичными или агент добавлен как collaborator через GitHub App
 - Спецификация лабораторных на сайте курса должна оставаться структурно стабильной (агент делает web fetch)
 
@@ -59,7 +59,7 @@ GitHub PR (trigger)
     ↓
 GitHub Actions (webhook)
     ↓
-Orchestrator Agent (LangGraph + Claude API)
+Orchestrator Agent (LangGraph + GLM-4.7)
     ├── Artifacts Agent   → web fetch спецификации → проверка файлов в PR
     ├── DoD Parser        → парсинг чеклиста из PR description
     ├── Content Reviewer  → LLM оценка по рубрикам
@@ -74,7 +74,7 @@ Results Aggregator
 
 **Компоненты:**
 - Оркестрация: LangGraph (граф состояний, явный control flow)
-- LLM: Claude Sonnet via Anthropic API
+- LLM: GLM-4.7 via Z.AI API (OpenAI-compatible)
 - Sandbox: E2B (Firecracker microVM изоляция)
 - Триггер: GitHub Actions + GitHub App
 - БД: Supabase (PostgreSQL + REST из коробки)

@@ -1,0 +1,43 @@
+@startuml c4-container
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+title Container Diagram: Project Judge
+
+Person(student, "Student")
+Person(instructor, "Instructor")
+
+System_Boundary(judge, "Project Judge") {
+    Container(webhook, "Webhook Server", "Python / Granian", "ASGI app: signature verify, event routing, /health")
+    Container(worker, "Task Worker", "Python / Taskiq", "Async grading pipeline, Q&A agent")
+    Container(agent, "Grading Agent", "LangGraph", "Tool-use loop: orchestrates all checks")
+    Container(sandbox_agent, "Code Review Agent", "LangGraph + E2B", "Sub-agent: tool-use loop inside sandbox")
+    Container(content_agent, "Content Evaluator", "LangGraph", "Sub-agent: document quality scoring")
+    ContainerDb(redis, "Redis", "Task queue + broker")
+}
+
+System_Ext(github, "GitHub API")
+System_Ext(zai, "Z.AI API")
+System_Ext(e2b, "E2B Sandbox API")
+System_Ext(sheets, "Google Sheets API")
+System_Ext(langfuse, "Langfuse")
+System_Ext(spec_site, "Lab Spec Site")
+
+Rel(student, github, "Opens PR")
+Rel(github, webhook, "POST /webhook")
+Rel(webhook, redis, "Enqueue task")
+Rel(redis, worker, "Dequeue task")
+Rel(worker, agent, "run_agent(PRContext)")
+Rel(agent, content_agent, "evaluate_content()")
+Rel(agent, sandbox_agent, "review_code()")
+Rel(agent, github, "Read files, post comments, add labels")
+Rel(agent, sheets, "Read roster/rubrics, write results")
+Rel(agent, spec_site, "Fetch lab spec")
+Rel(agent, zai, "LLM calls (main loop)")
+Rel(content_agent, zai, "LLM call (evaluation)")
+Rel(sandbox_agent, zai, "LLM calls (code review loop)")
+Rel(sandbox_agent, e2b, "Create sandbox, run commands")
+Rel(worker, langfuse, "Traces (async callback)")
+Rel(instructor, github, "Reviews escalated PRs")
+Rel(instructor, sheets, "Manages rubrics")
+
+@enduml

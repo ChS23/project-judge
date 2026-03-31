@@ -1,0 +1,48 @@
+@startuml c4-component
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+title Component Diagram: Agent Core
+
+Container_Boundary(agent_core, "Grading Agent") {
+
+    Component(graph, "Agent Graph", "StateGraph + ToolNode", "Tool-use loop: LLM decides next tool")
+    Component(prompt, "System Prompt", "prompt.py", "Workflow instructions, report template, constraints")
+    Component(llm_client, "LLM Client", "ChatOpenAI", "Z.AI / GLM-4.7, temperature=0.1")
+
+    Component(roster_tool, "read_roster", "deterministic", "Google Sheets lookup")
+    Component(spec_tool, "fetch_spec", "deterministic", "HTML parse -> deliverables, files, DoD")
+    Component(artifacts_tool, "check_artifacts", "deterministic", "PR diff vs expected files")
+    Component(read_tool, "read_file", "deterministic", "GitHub API content read")
+    Component(dod_tool, "parse_dod", "deterministic", "Checkbox counter in PR body")
+    Component(deadline_tool, "check_deadline", "deterministic", "Penalty coefficient calculator")
+
+    Component(content_tool, "evaluate_content", "sub-agent", "LLM + sanitize + injection detect")
+    Component(sandbox_tool, "review_code", "sub-agent", "E2B sandbox + tool-use loop + structured output")
+
+    Component(comment_tool, "post_comment", "write", "Markdown report -> PR comment")
+    Component(escalate_tool, "escalate", "write", "Add needs-review label")
+    Component(results_tool, "write_results", "write", "Append row to Google Sheets")
+
+    Component(sanitizer, "Sanitizer", "sanitize.py", "13 injection patterns + structural isolation")
+}
+
+Rel(graph, llm_client, "LLM calls with bound tools")
+Rel(graph, prompt, "System message")
+
+Rel(graph, roster_tool, "")
+Rel(graph, spec_tool, "")
+Rel(graph, artifacts_tool, "")
+Rel(graph, read_tool, "")
+Rel(graph, dod_tool, "")
+Rel(graph, deadline_tool, "")
+Rel(graph, content_tool, "")
+Rel(graph, sandbox_tool, "")
+Rel(graph, comment_tool, "")
+Rel(graph, escalate_tool, "")
+Rel(graph, results_tool, "")
+
+Rel(content_tool, sanitizer, "Sanitize before evaluation")
+Rel(content_tool, llm_client, "Separate LLM call")
+Rel(sandbox_tool, llm_client, "Tool-use loop + format call")
+
+@enduml

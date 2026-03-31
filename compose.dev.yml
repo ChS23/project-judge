@@ -1,0 +1,25 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+  app:
+    build: .
+    env_file: .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+
+  worker:
+    build: .
+    env_file: .env
+    command: uv run taskiq worker judge.tasks.broker:broker judge.tasks.grade_pr
+    depends_on:
+      - redis
+
+volumes:
+  redis-data:

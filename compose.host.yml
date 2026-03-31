@@ -1,0 +1,27 @@
+services:
+  redis:
+    image: redis:7-alpine
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+
+  app:
+    build: .
+    network_mode: host
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      - redis
+
+  worker:
+    build: .
+    network_mode: host
+    restart: unless-stopped
+    env_file: .env
+    command: uv run taskiq worker judge.tasks.broker:broker judge.tasks.grade_pr
+    depends_on:
+      - redis
+
+volumes:
+  redis-data:
