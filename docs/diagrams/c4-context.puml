@@ -1,29 +1,29 @@
 @startuml c4-context
 !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
 
-title System Context: Project Judge
+LAYOUT_WITH_LEGEND()
 
-Person(student, "Student", "Submits PR with lab deliverables")
-Person(instructor, "Instructor", "Reviews escalated PRs, manages rubrics")
+title System Context diagram for Project Judge
 
-System(judge, "Project Judge", "Automated grading system for student PRs")
+Person(student, "Student", "Submits lab deliverables as GitHub PR")
+Person(instructor, "Instructor", "Manages rubrics, reviews escalated PRs")
 
-System_Ext(github, "GitHub", "Repos, PRs, webhooks")
-System_Ext(zai, "Z.AI API", "GLM-4.7 LLM inference")
-System_Ext(e2b, "E2B", "Firecracker sandbox")
-System_Ext(sheets, "Google Sheets", "Roster, rubrics, deadlines, results")
-System_Ext(langfuse, "Langfuse", "LLM observability")
-System_Ext(spec_site, "Lab Spec Site", "Lab specifications")
+System(judge, "Project Judge", "Automated grading system: checks artifacts, evaluates documents, reviews code, posts feedback")
 
-Rel(student, github, "Opens PR")
-Rel(github, judge, "Webhook: pull_request, issue_comment")
-Rel(judge, github, "Comments, labels, read files")
-Rel(judge, zai, "LLM inference (OpenAI-compat)")
-Rel(judge, e2b, "Create/destroy sandboxes")
-Rel(judge, sheets, "Read roster/rubrics, write results")
-Rel(judge, langfuse, "Traces (async)")
-Rel(judge, spec_site, "Fetch lab specs (HTTP)")
-Rel(instructor, sheets, "Manage rubrics, deadlines")
-Rel(instructor, github, "Review escalated PRs")
+System_Ext(github, "GitHub", "Hosts student repositories and pull requests")
+System_Ext(zai, "Z.AI", "Provides LLM inference via OpenAI-compatible API")
+System_Ext(e2b, "E2B", "Runs student code in isolated Firecracker sandboxes")
+System_Ext(sheets, "Google Sheets", "Stores roster, rubrics, deadlines, and grading results")
+System_Ext(langfuse, "Langfuse", "Collects LLM traces for observability")
+
+Rel(student, github, "Pushes code and opens PR")
+Rel(github, judge, "Sends webhook on PR open or comment")
+Rel(judge, github, "Posts grading comments and inline code reviews")
+Rel(judge, zai, "Sends prompts, receives completions")
+Rel(judge, e2b, "Creates sandboxes, executes build and tests")
+Rel(judge, sheets, "Reads roster and rubrics, writes grading results")
+Rel(judge, langfuse, "Sends LLM call traces asynchronously")
+Rel(instructor, sheets, "Edits rubrics and deadlines")
+Rel(instructor, github, "Reviews PRs labeled needs-review")
 
 @enduml

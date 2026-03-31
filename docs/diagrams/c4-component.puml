@@ -1,48 +1,45 @@
 @startuml c4-component
 !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
 
-title Component Diagram: Agent Core
+LAYOUT_WITH_LEGEND()
 
-Container_Boundary(agent_core, "Grading Agent") {
+title Component diagram for Task Worker
 
-    Component(graph, "Agent Graph", "StateGraph + ToolNode", "Tool-use loop: LLM decides next tool")
-    Component(prompt, "System Prompt", "prompt.py", "Workflow instructions, report template, constraints")
-    Component(llm_client, "LLM Client", "ChatOpenAI", "Z.AI / GLM-4.7, temperature=0.1")
-
-    Component(roster_tool, "read_roster", "deterministic", "Google Sheets lookup")
-    Component(spec_tool, "fetch_spec", "deterministic", "HTML parse -> deliverables, files, DoD")
-    Component(artifacts_tool, "check_artifacts", "deterministic", "PR diff vs expected files")
-    Component(read_tool, "read_file", "deterministic", "GitHub API content read")
-    Component(dod_tool, "parse_dod", "deterministic", "Checkbox counter in PR body")
-    Component(deadline_tool, "check_deadline", "deterministic", "Penalty coefficient calculator")
-
-    Component(content_tool, "evaluate_content", "sub-agent", "LLM + sanitize + injection detect")
-    Component(sandbox_tool, "review_code", "sub-agent", "E2B sandbox + tool-use loop + structured output")
-
-    Component(comment_tool, "post_comment", "write", "Markdown report -> PR comment")
-    Component(escalate_tool, "escalate", "write", "Add needs-review label")
-    Component(results_tool, "write_results", "write", "Append row to Google Sheets")
-
-    Component(sanitizer, "Sanitizer", "sanitize.py", "13 injection patterns + structural isolation")
+Container_Boundary(worker, "Task Worker") {
+    Component(grading_agent, "Grading Agent", "LangGraph StateGraph", "Orchestrates tool calls: decides which checks to run and in what order")
+    Component(qa_agent, "Q&A Agent", "LangGraph StateGraph", "Answers student questions, triggers recheck when requested")
+    Component(deterministic_tools, "Deterministic Tools", "Python functions", "Artifact checks, DoD parsing, deadline calculation, roster lookup, spec fetching, file reading, past reviews")
+    Component(eval_subagent, "Content Evaluator", "LangGraph sub-agent", "Evaluates document quality against rubric criteria via LLM")
+    Component(sandbox_subagent, "Code Review Agent", "LangGraph sub-agent + E2B", "Reviews code in sandbox: runs build, tests, checks quality, posts inline comments")
+    Component(github_client, "GitHub Client", "gidgethub, httpx", "Reads PR files, posts comments, creates inline reviews, manages labels")
+    Component(sheets_client, "Sheets Client", "aiogoogle", "Reads roster, rubrics, deadlines; writes grading results")
+    Component(llm_client, "LLM Client", "langchain-openai", "Wraps Z.AI API calls with tool binding and structured output")
+    Component(sanitizer, "Input Sanitizer", "Python regex", "Detects prompt injection patterns, wraps student content in structural isolation markers")
 }
 
-Rel(graph, llm_client, "LLM calls with bound tools")
-Rel(graph, prompt, "System message")
+System_Ext(github, "GitHub API")
+System_Ext(zai, "Z.AI API")
+System_Ext(e2b, "E2B API")
+System_Ext(sheets, "Google Sheets API")
 
-Rel(graph, roster_tool, "")
-Rel(graph, spec_tool, "")
-Rel(graph, artifacts_tool, "")
-Rel(graph, read_tool, "")
-Rel(graph, dod_tool, "")
-Rel(graph, deadline_tool, "")
-Rel(graph, content_tool, "")
-Rel(graph, sandbox_tool, "")
-Rel(graph, comment_tool, "")
-Rel(graph, escalate_tool, "")
-Rel(graph, results_tool, "")
+Rel(grading_agent, deterministic_tools, "Calls for artifact checks, deadlines, DoD")
+Rel(grading_agent, eval_subagent, "Calls to evaluate document content")
+Rel(grading_agent, sandbox_subagent, "Calls to review code in sandbox")
+Rel(grading_agent, github_client, "Posts grading report and inline reviews")
+Rel(grading_agent, sheets_client, "Writes grading results")
 
-Rel(content_tool, sanitizer, "Sanitize before evaluation")
-Rel(content_tool, llm_client, "Separate LLM call")
-Rel(sandbox_tool, llm_client, "Tool-use loop + format call")
+Rel(qa_agent, deterministic_tools, "Reads files and specs for context")
+Rel(qa_agent, grading_agent, "Triggers recheck via task queue")
+
+Rel(eval_subagent, sanitizer, "Sanitizes student content before evaluation")
+Rel(eval_subagent, llm_client, "Sends evaluation prompt")
+Rel(sandbox_subagent, llm_client, "Sends code review prompts in tool-use loop")
+Rel(sandbox_subagent, github_client, "Posts inline review comments on PR")
+Rel(grading_agent, llm_client, "Sends orchestration prompts")
+
+Rel(github_client, github, "Reads and writes via REST API", "HTTPS")
+Rel(llm_client, zai, "Sends chat completions", "HTTPS")
+Rel(sandbox_subagent, e2b, "Creates and manages sandboxes", "HTTPS")
+Rel(sheets_client, sheets, "Reads and writes via Sheets API", "HTTPS")
 
 @enduml
