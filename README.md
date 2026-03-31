@@ -42,7 +42,7 @@
 
 ### Architecture Metrics
 
-> Validated with [aact](https://github.com/ChS23/aact) — Architecture As Code Tools
+> Validated with [aact](https://github.com/Byndyusoft/aact) ([v2](https://github.com/ChS23/aact/tree/v2)) — Architecture As Code Tools
 
 | Metric | Value |
 |--------|-------|
