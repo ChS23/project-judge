@@ -24,17 +24,19 @@
 
 ## Архитектура
 
-```
-GitHub Webhook → Granian ASGI → Taskiq/Redis → LangGraph Agent
-                                                    │
-                                    ┌───────────────┼───────────────┐
-                                    ▼               ▼               ▼
-                            evaluate_content   review_code    answer_question
-                            (LLM sub-agent)   (E2B sandbox   (Q&A sub-agent)
-                                               sub-agent)
-```
+![C4 Container Diagram](docs/diagrams/c4-container.svg)
 
 **Tool-use loop agent** — агент сам решает какие инструменты вызвать и в каком порядке. 12 tools для грейдинга, 4 для Q&A.
+
+### Диаграммы
+
+| Диаграмма | Описание |
+|-----------|----------|
+| [C4 Context](docs/diagrams/c4-context.svg) | Система, пользователи, внешние сервисы |
+| [C4 Container](docs/diagrams/c4-container.svg) | Webhook, worker, agent, sub-agents, Redis |
+| [C4 Component](docs/diagrams/c4-component.svg) | Внутреннее устройство agent core (12 tools) |
+| [Workflow](docs/diagrams/workflow.svg) | Полный execution flow с ветками ошибок |
+| [Data Flow](docs/diagrams/data-flow.svg) | Как данные проходят через систему |
 
 Подробнее: [docs/system-design.md](docs/system-design.md)
 
