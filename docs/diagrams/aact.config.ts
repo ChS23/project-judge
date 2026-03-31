@@ -1,8 +1,6 @@
-// import { defineConfig } from "aact";
-// TODO: defineConfig fails with jiti on Node 20 (ERR_PACKAGE_PATH_NOT_EXPORTED)
-// Works on Node 22+ or with npx (not pnpx). Track: https://github.com/ChS23/aact
+import { defineConfig } from "aact";
 
-export default {
+export default defineConfig({
   source: {
     type: "plantuml",
     path: "./c4-container.puml",
@@ -21,4 +19,4 @@ export default {
     dbPerService: false,  // Redis is intentionally shared between app and worker
     apiGateway: false,    // No API gateway in PoC
   },
-};
+});
