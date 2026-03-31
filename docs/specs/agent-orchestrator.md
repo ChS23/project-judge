@@ -50,6 +50,7 @@ START → agent → tools_condition → tools → agent → ... → END
 - **Hint limit**: 5 подсказок на PR (маркер `<!-- project-judge:hint -->`)
 - **Recheck**: Если студент просит перепроверку, Q&A вызывает `trigger_recheck` → `grade_pr.kiq(pr)` в фоне. Не расходует лимит хинтов.
 - **Context**: Получает последний grading comment бота для контекста
+- **recursion_limit**: 10 (меньше чем у grading agent — Q&A не должен делать много шагов)
 
 ## Stop Conditions
 

@@ -69,7 +69,7 @@ CMD ["uv", "run", "python", "-m", "judge"]
 | `GITHUB_PRIVATE_KEY` | yes* | — | PEM content directly |
 | `GITHUB_WEBHOOK_SECRET` | yes | — | HMAC secret for webhook verification |
 | `ZAI_API_KEY` | yes | — | Z.AI API key |
-| `ZAI_BASE_URL` | no | `https://api.z.ai/api/paas/v4` | Z.AI endpoint |
+| `ZAI_BASE_URL` | no | `https://api.z.ai/api/paas/v4` | Z.AI endpoint (prod: `api/coding/paas/v4`) |
 | `ZAI_MODEL` | no | `glm-4.7` | Model name |
 | `REDIS_URL` | no | `redis://localhost:6379/0` | Redis connection |
 | `LANGFUSE_PUBLIC_KEY` | no | `""` | Langfuse (optional) |
