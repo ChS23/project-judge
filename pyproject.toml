@@ -98,6 +98,12 @@ division-by-zero = "error"
 pythonpath = ["src"]
 asyncio_mode = "auto"
 
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+]
+
 [tool.ty.analysis]
 allowed-unresolved-imports = ["langchain_openai"]
 

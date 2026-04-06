@@ -40,7 +40,8 @@ async def get_installation_token(installation_id: int) -> str:
 
     data = resp.json()
     token = data["token"]
-    expires_at = time.time() + 3300  # ~55 min
+    # 50 min TTL (tokens valid 60 min, margin for long requests)
+    expires_at = time.time() + 3000
     _token_cache[installation_id] = (token, expires_at)
     await logger.ainfo("installation_token_acquired", installation_id=installation_id)
     return token
