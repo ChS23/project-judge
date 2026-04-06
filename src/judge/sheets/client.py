@@ -230,6 +230,7 @@ async def update_leaderboard(repo: str) -> None:
     """
     sid = resolve_spreadsheet_id(repo)
     if not sid:
+        await logger.awarning("leaderboard_skipped", repo=repo, reason="no spreadsheet")
         return
 
     # Читаем results и roster

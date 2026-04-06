@@ -48,3 +48,22 @@ async def test_check_artifacts_extra_files(mock_files, pr):
     tool = make_check_artifacts(pr)
     result = await tool.ainvoke({"expected_files": ["README.md"]})
     assert "extra.txt" in result["extra_files"]
+
+
+@patch("judge.agent.tools.artifacts.get_pr_files")
+async def test_check_artifacts_no_substring_matching(mock_files, pr):
+    """Файл use-cases-draft.md не должен матчиться как use-cases.md."""
+    mock_files.return_value = ["docs/use-cases-draft.md"]
+    tool = make_check_artifacts(pr)
+    result = await tool.ainvoke({"expected_files": ["docs/use-cases.md"]})
+    assert result["total_found"] == 0
+    assert "docs/use-cases.md" in result["missing"]
+
+
+@patch("judge.agent.tools.artifacts.get_pr_files")
+async def test_check_artifacts_file_in_different_dir(mock_files, pr):
+    """Файл с тем же именем в другой директории должен быть найден."""
+    mock_files.return_value = ["src/docs/architecture.md"]
+    tool = make_check_artifacts(pr)
+    result = await tool.ainvoke({"expected_files": ["docs/architecture.md"]})
+    assert result["total_found"] == 1

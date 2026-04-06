@@ -11,20 +11,29 @@ def make_write_results(pr: PRContext):
     async def write_results(
         github_username: str,
         lab_id: int,
-        scores: str,
+        deliverable_id: str,
+        criterion: str,
+        score: float,
+        max_score: float,
         penalty_coefficient: float,
         final_score: float,
         comment_url: str = "",
         flags: str = "",
     ) -> str:
-        """Записать результаты проверки в Google Sheets.
+        """Записать результат проверки одного критерия в Google Sheets.
+
+        Вызывай отдельно для КАЖДОГО критерия. Например, если у deliverable D1
+        три критерия — вызови write_results три раза.
 
         Args:
             github_username: GitHub username студента
             lab_id: Номер лабораторной
-            scores: JSON строка с оценками по критериям
+            deliverable_id: ID deliverable (например: D1, D2)
+            criterion: Название критерия
+            score: Балл за этот критерий
+            max_score: Максимальный балл за критерий
             penalty_coefficient: Коэффициент штрафа (0.2 - 1.0)
-            final_score: Итоговый балл
+            final_score: Итоговый балл = score * penalty_coefficient
             comment_url: URL опубликованного комментария
             flags: Флаги через запятую (needs-review, injection-detected)
         """
@@ -33,7 +42,10 @@ def make_write_results(pr: PRContext):
             {
                 "github_username": github_username,
                 "lab_id": lab_id,
-                "score": scores,
+                "deliverable_id": deliverable_id,
+                "criterion": criterion,
+                "score": score,
+                "max_score": max_score,
                 "penalty_coeff": penalty_coefficient,
                 "final_score": final_score,
                 "pr_url": pr.pr_url,
@@ -42,6 +54,6 @@ def make_write_results(pr: PRContext):
                 "checked_at": datetime.now(UTC).isoformat(),
             },
         )
-        return f"Результаты записаны для {github_username}, lab {lab_id}"
+        return f"Записано: {github_username}, lab {lab_id}, {deliverable_id}/{criterion}: {score}/{max_score}"
 
     return write_results

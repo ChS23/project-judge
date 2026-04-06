@@ -49,6 +49,10 @@ async def app(scope, receive, send):
         try:
             secret = settings.github_webhook_secret
             event = Event.from_http(headers, body, secret=secret)
+        except json.JSONDecodeError:
+            await logger.awarning("webhook_malformed_body")
+            await _respond(send, 400, {"error": "malformed JSON body"})
+            return
         except Exception:
             await logger.awarning("webhook_signature_invalid")
             await _respond(send, 401, {"error": "invalid signature"})
