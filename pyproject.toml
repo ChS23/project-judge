@@ -70,7 +70,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S", "ARG", "TC001"]
-"tests/test_eval/**" = ["S", "ARG", "TC001", "E501"]
+"tests/test_eval/**" = ["S", "ARG", "TC001", "E501", "F841", "B023", "ASYNC240"]
 "src/judge/agent/tools/**" = ["ARG001"]
 "src/judge/sheets/**" = ["ARG001"]
 "src/judge/agent/**" = ["E501"]
