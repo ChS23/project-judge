@@ -69,7 +69,8 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S", "ARG"]
+"tests/**" = ["S", "ARG", "TC001"]
+"tests/test_eval/**" = ["S", "ARG", "TC001", "E501"]
 "src/judge/agent/tools/**" = ["ARG001"]
 "src/judge/sheets/**" = ["ARG001"]
 "src/judge/agent/**" = ["E501"]
@@ -93,13 +94,19 @@ missing-typed-dict-key = "warn"
 invalid-key = "warn"
 invalid-type-form = "error"
 division-by-zero = "error"
+invalid-return-type = "warn"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 asyncio_mode = "auto"
+markers = [
+    "llm_eval: tests calling real LLM (slow, costs money)",
+    "sandbox: tests using real E2B sandbox",
+]
 
 [dependency-groups]
 dev = [
+    "agentevals>=0.0.9",
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
 ]
