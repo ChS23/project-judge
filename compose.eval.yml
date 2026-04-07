@@ -1,0 +1,20 @@
+services:
+  eval:
+    build:
+      context: .
+      target: eval
+    network_mode: host
+    env_file: .env
+    command: uv run python -m pytest tests/test_eval/ -v --tb=short -s
+    volumes:
+      - ./tests/test_eval/reports:/app/tests/test_eval/reports
+
+  eval-full:
+    build:
+      context: .
+      target: eval
+    network_mode: host
+    env_file: .env
+    command: uv run python tests/test_eval/run_eval.py
+    volumes:
+      - ./tests/test_eval/reports:/app/tests/test_eval/reports

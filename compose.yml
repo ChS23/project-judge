@@ -6,7 +6,9 @@ services:
       - redis-data:/data
 
   app:
-    build: .
+    build:
+      context: .
+      target: prod
     restart: unless-stopped
     env_file: .env
     ports:
@@ -15,7 +17,9 @@ services:
       - redis
 
   worker:
-    build: .
+    build:
+      context: .
+      target: prod
     restart: unless-stopped
     env_file: .env
     command: uv run taskiq worker judge.tasks.broker:broker judge.tasks.grade_pr
