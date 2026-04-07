@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 
 def make_sandbox_mock(scenario):
-    """Возвращает патч для e2b.Sandbox, если сценарий имеет canned report."""
+    """Возвращает патчи для sandbox: settings, auth token, e2b.Sandbox."""
     if not scenario.sandbox_report:
         return {}
 
@@ -25,4 +25,16 @@ def make_sandbox_mock(scenario):
         sandbox.kill = MagicMock()
         return sandbox
 
-    return {"e2b.Sandbox": fake_sandbox_class}
+    async def fake_get_token(installation_id):
+        return "fake-token-for-eval"
+
+    mock_settings = MagicMock(e2b_api_key="fake-key", sandbox_timeout=600)
+
+    return {
+        # settings.e2b_api_key check
+        "judge.agent.tools.sandbox.settings": mock_settings,
+        # get_installation_token (JWT would fail with test key)
+        "judge.agent.tools.sandbox.get_installation_token": fake_get_token,
+        # e2b.Sandbox — lazy imported inside review_code
+        "e2b.Sandbox": fake_sandbox_class,
+    }

@@ -12,7 +12,6 @@ from langchain_core.messages import HumanMessage
 from judge.agent.graph import build_agent
 from tests.test_eval.judge.llm_judge import judge_report
 from tests.test_eval.judge.trajectory import (
-    CODE_LAB_REQUIRED,
     DOC_LAB_FORBIDDEN,
     DOC_LAB_REQUIRED,
     check_forbidden_tools,
@@ -93,7 +92,8 @@ async def _run_and_eval(scenario, collector):
 
     # Trajectory
     if gt.should_call_review_code:
-        required = CODE_LAB_REQUIRED
+        # review_code рекомендуемый но не обязательный — агент сам решает
+        required = DOC_LAB_REQUIRED
         forbidden = set()
     else:
         required = DOC_LAB_REQUIRED
