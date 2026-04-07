@@ -1,8 +1,10 @@
 import os
 
 import pytest
+from dotenv import load_dotenv
 
-# Загрузить тестовые env vars до импорта settings
+# Загрузить .env (реальные ключи), потом fallback для быстрых тестов
+load_dotenv()
 os.environ.setdefault("GITHUB_APP_ID", "0")
 os.environ.setdefault("GITHUB_PRIVATE_KEY", "test")
 os.environ.setdefault("GITHUB_WEBHOOK_SECRET", "test")

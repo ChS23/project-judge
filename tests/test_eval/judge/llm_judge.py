@@ -92,19 +92,31 @@ def _build_judge_input(scenario: EvalScenario, agent_report: str) -> str:
     )
 
 
+def _strip_markdown_json(text: str) -> str:
+    """Убирает ```json ... ``` обёртку если есть."""
+    text = text.strip()
+    if text.startswith("```"):
+        lines = text.split("\n")
+        # Убираем первую строку (```json) и последнюю (```)
+        lines = [line for line in lines if not line.strip().startswith("```")]
+        text = "\n".join(lines)
+    return text.strip()
+
+
 async def judge_report(
     agent_report: str,
     scenario: EvalScenario,
 ) -> JudgeVerdict:
     """Запускает LLM-as-judge и возвращает структурированный вердикт."""
     llm = get_llm()
-    judge_llm = llm.with_structured_output(JudgeVerdict)
-
     judge_input = _build_judge_input(scenario, agent_report)
 
-    return await judge_llm.ainvoke(
+    response = await llm.ainvoke(
         [
             {"role": "system", "content": JUDGE_PROMPT},
             {"role": "user", "content": judge_input},
         ]
     )
+
+    raw = _strip_markdown_json(str(response.content))
+    return JudgeVerdict.model_validate_json(raw)

@@ -2,9 +2,11 @@
 
 import time
 from contextlib import ExitStack
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
+import httpx
 import pytest
+import respx
 from langchain_core.messages import HumanMessage
 
 from judge.agent.graph import build_agent
@@ -48,24 +50,26 @@ def _apply_mocks(scenario):
     """Context manager: apply all mocks, yield OutputCollector."""
     collector = OutputCollector()
 
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.text = scenario.spec_html
-    mock_client = AsyncMock()
-    mock_client.get.return_value = mock_response
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=False)
-
     all_mocks = {
         **make_github_mocks(scenario, collector),
         **make_sheets_mocks(scenario, collector),
         **make_sandbox_mock(scenario),
-        "judge.agent.tools.spec.httpx.AsyncClient": lambda *a, **kw: mock_client,
     }
 
     stack = ExitStack()
     for target, mock_fn in all_mocks.items():
-        stack.enter_context(patch(target, side_effect=mock_fn))
+        stack.enter_context(patch(target, new=mock_fn))
+
+    # respx: mock spec page, pass through LLM API
+    router = respx.MockRouter(assert_all_mocked=False, assert_all_called=False)
+    router.route(host="api.z.ai").pass_through()
+    router.route(host__regex=r".*langfuse.*").pass_through()
+    router.route(host__regex=r".*e2b.*").pass_through()
+    router.get(url__regex=r"https://sii\.sergeivolchkov\.ru/.*").mock(
+        return_value=httpx.Response(200, text=scenario.spec_html)
+    )
+    stack.enter_context(router)
+
     return stack, collector
 
 
