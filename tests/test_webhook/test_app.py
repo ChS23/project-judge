@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+from unittest.mock import patch
 
 from judge.webhook.app import app
 
@@ -44,12 +45,13 @@ class FakeSend:
         return None
 
 
-async def test_health():
+@patch("judge.webhook.app._check_health", return_value={"status": "ok", "checks": {}})
+async def test_health(_mock_health):
     scope = {"type": "http", "method": "GET", "path": "/health", "headers": []}
     send = FakeSend()
     await app(scope, None, send)
     assert send.status == 200
-    assert send.body == {"status": "ok"}
+    assert send.body["status"] == "ok"
 
 
 async def test_404():

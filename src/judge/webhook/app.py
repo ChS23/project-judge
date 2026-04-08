@@ -12,6 +12,52 @@ logger = structlog.get_logger()
 _broker_started = False
 
 
+async def _check_health() -> dict:
+    """Deep health check: Redis, LLM availability."""
+    checks = {}
+
+    # Redis
+    try:
+        import redis.asyncio as aioredis
+
+        r = aioredis.from_url(settings.redis_url)
+        pong = r.ping()
+        if hasattr(pong, "__await__"):
+            await pong
+        checks["redis"] = "ok"
+        close = r.aclose()
+        if hasattr(close, "__await__"):
+            await close
+    except Exception as e:
+        checks["redis"] = f"error: {e}"
+
+    # LLM (lightweight check — just verify API key works)
+    if settings.zai_api_key and settings.zai_api_key != "test":
+        try:
+            import httpx
+
+            async with httpx.AsyncClient(timeout=5) as client:
+                resp = await client.post(
+                    f"{settings.zai_base_url}/chat/completions",
+                    headers={"Authorization": f"Bearer {settings.zai_api_key}"},
+                    json={
+                        "model": settings.zai_model,
+                        "messages": [{"role": "user", "content": "ping"}],
+                        "max_tokens": 1,
+                    },
+                )
+                checks["llm"] = (
+                    "ok" if resp.status_code < 500 else f"error: {resp.status_code}"
+                )
+        except Exception as e:
+            checks["llm"] = f"error: {e}"
+    else:
+        checks["llm"] = "not configured"
+
+    all_ok = all(v == "ok" for v in checks.values() if v != "not configured")
+    return {"status": "ok" if all_ok else "degraded", "checks": checks}
+
+
 async def _ensure_broker():
     global _broker_started
     if not _broker_started:
@@ -39,7 +85,9 @@ async def app(scope, receive, send):
     method = scope["method"]
 
     if method == "GET" and path == "/health":
-        await _respond(send, 200, {"status": "ok"})
+        health = await _check_health()
+        status = 200 if health["status"] == "ok" else 503
+        await _respond(send, status, health)
         return
 
     if method == "POST" and path == "/webhook":

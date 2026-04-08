@@ -176,3 +176,12 @@ async def get_file_content(pr: PRContext, path: str) -> str | None:
         return resp.get("content", "")
     except Exception:
         return None
+
+
+async def get_pr_labels(pr: PRContext) -> list[str]:
+    """Получить labels PR."""
+    gh = await _gh(pr)
+    labels = []
+    async for item in gh.getiter(f"/repos/{pr.repo}/issues/{pr.pr_number}/labels"):
+        labels.append(item["name"])
+    return labels
