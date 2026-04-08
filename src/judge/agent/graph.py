@@ -1,5 +1,7 @@
 import os
+import re
 
+import structlog
 from langchain_core.messages import HumanMessage, SystemMessage
 from langfuse.langchain import CallbackHandler
 from langgraph.graph import START, MessagesState, StateGraph
@@ -10,6 +12,10 @@ from judge.agent.tools import get_all_tools
 from judge.llm.client import get_llm
 from judge.models.pr import PRContext
 from judge.settings import settings
+
+logger = structlog.get_logger()
+
+MAX_GRADING_ATTEMPTS = 2
 
 
 def _langfuse_handler() -> CallbackHandler | None:
@@ -42,8 +48,32 @@ def build_agent(pr: PRContext):
     return graph.compile()
 
 
+def _validate_report(report: str, expected_criteria: int | None = None) -> list[str]:
+    """Валидация отчёта агента. Возвращает список проблем (пустой = ок)."""
+    issues = []
+
+    # Проверяем наличие обязательных секций
+    if "Результат автопроверки" not in report:
+        issues.append("Отчёт не содержит секцию 'Результат автопроверки'")
+
+    if "Итого" not in report and "итого" not in report.lower():
+        issues.append("Отчёт не содержит итоговый балл")
+
+    # Считаем строки таблицы оценок (| Критерий | Балл | ...)
+    score_rows = re.findall(r"\|\s*[^|]+\s*\|\s*\d+\s*\|\s*\d+\s*\|", report)
+    if expected_criteria and len(score_rows) < expected_criteria:
+        issues.append(
+            f"Оценено {len(score_rows)} критериев, ожидалось {expected_criteria}"
+        )
+
+    # Проверяем что есть хотя бы 1 оценённый критерий
+    if not score_rows:
+        issues.append("Нет ни одного оценённого критерия в таблице")
+
+    return issues
+
+
 async def run_agent(pr: PRContext) -> str:
-    agent = build_agent(pr)
     config = {}
 
     handler = _langfuse_handler()
@@ -57,10 +87,38 @@ async def run_agent(pr: PRContext) -> str:
         "sender": pr.sender,
         "branch": pr.branch,
     }
-
     config["recursion_limit"] = 30
-    result = await agent.ainvoke(
-        {"messages": [HumanMessage(content=f"Проверь PR #{pr.pr_number}")]},
-        config=config,
+
+    last_report = ""
+    for attempt in range(1, MAX_GRADING_ATTEMPTS + 1):
+        agent = build_agent(pr)
+        result = await agent.ainvoke(
+            {"messages": [HumanMessage(content=f"Проверь PR #{pr.pr_number}")]},
+            config=config,
+        )
+        last_report = str(result["messages"][-1].content)
+
+        issues = _validate_report(last_report)
+        if not issues:
+            if attempt > 1:
+                await logger.ainfo(
+                    "grading_retry_succeeded",
+                    pr=pr.pr_number,
+                    attempt=attempt,
+                )
+            return last_report
+
+        await logger.awarning(
+            "grading_validation_failed",
+            pr=pr.pr_number,
+            attempt=attempt,
+            issues=issues,
+        )
+
+    # Последняя попытка не прошла валидацию — возвращаем как есть
+    await logger.awarning(
+        "grading_validation_exhausted",
+        pr=pr.pr_number,
+        attempts=MAX_GRADING_ATTEMPTS,
     )
-    return result["messages"][-1].content
+    return last_report
