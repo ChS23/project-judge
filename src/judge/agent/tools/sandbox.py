@@ -227,14 +227,17 @@ def make_review_code(pr: PRContext):
         )
 
         try:
-            sandbox.git.clone(
-                repo_url,
-                path="/home/user/repo",
-                branch=pr.branch,
-                depth=1,
-                username="x-access-token",
-                password=token,
-            )
+            try:
+                sandbox.git.clone(
+                    repo_url,
+                    path="/home/user/repo",
+                    branch=pr.branch,
+                    depth=1,
+                    username="x-access-token",
+                    password=token,
+                )
+            except Exception as e:
+                return f"Не удалось клонировать репозиторий: {e}"
 
             reviewer = _build_code_reviewer(sandbox)
             result = await reviewer.ainvoke(

@@ -8,5 +8,6 @@ def get_llm() -> ChatOpenAI:
         base_url=settings.zai_base_url,
         api_key=settings.zai_api_key,
         model=settings.zai_model,
-        temperature=0.1,
+        temperature=0,
+        max_retries=5,
     )

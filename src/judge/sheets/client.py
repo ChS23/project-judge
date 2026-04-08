@@ -1,3 +1,4 @@
+import contextlib
 import json
 from pathlib import Path
 
@@ -230,6 +231,7 @@ async def update_leaderboard(repo: str) -> None:
     """
     sid = resolve_spreadsheet_id(repo)
     if not sid:
+        await logger.awarning("leaderboard_skipped", repo=repo, reason="no spreadsheet")
         return
 
     # Читаем results и roster
@@ -252,24 +254,31 @@ async def update_leaderboard(repo: str) -> None:
         if username and team:
             user_team[username] = team
 
-    # Собираем лучший final_score каждого студента по каждой лабе
-    # Ключ: (username, lab_id) → лучший final_score
-    best_scores: dict[tuple[str, str], float] = {}
-    for row in results_rows[1:]:
-        if not row:
-            continue
-        record = _normalize_row(roster_header, row, {})
-        # results columns: username, lab_id, ..., final_score (idx 7)
-        username = row[0] if len(row) > 0 else ""
-        lab_id = row[1] if len(row) > 1 else ""
-        try:
-            score = float(row[7]) if len(row) > 7 and row[7] else 0.0
-        except ValueError:
-            score = 0.0
+    # Группируем строки по (username, lab_id, checked_at) — одна попытка.
+    # Суммируем final_score критериев внутри попытки.
+    # Потом берём лучшую попытку для каждого (username, lab_id).
+    #
+    # results columns: 0=username, 1=lab_id, ..., 7=final_score, ..., 11=checked_at
+    from collections import defaultdict
 
+    attempt_scores: dict[tuple[str, str, str], float] = defaultdict(float)
+    for row in results_rows[1:]:
+        if not row or len(row) < 8:
+            continue
+        username = row[0]
+        lab_id = row[1]
+        checked_at = row[11] if len(row) > 11 else ""
+        # Округляем timestamp до минуты — строки одного грейда группируются
+        attempt_key = (username, lab_id, checked_at[:16])
+        with contextlib.suppress(ValueError):
+            attempt_scores[attempt_key] += float(row[7]) if row[7] else 0.0
+
+    # Лучшая попытка для каждого (username, lab_id)
+    best_scores: dict[tuple[str, str], float] = {}
+    for (username, lab_id, _ts), total in attempt_scores.items():
         key = (username, lab_id)
-        if key not in best_scores or score > best_scores[key]:
-            best_scores[key] = score
+        if key not in best_scores or total > best_scores[key]:
+            best_scores[key] = total
 
     # Агрегируем по командам
     # team → {total_score, member_count, labs}

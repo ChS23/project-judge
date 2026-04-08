@@ -54,7 +54,7 @@ def _make_trigger_recheck(pr: PRContext):
         """
         from judge.tasks.grade_pr import grade_pr
 
-        await grade_pr.kiq(pr)
+        await grade_pr.kiq(pr, force=True)
         return "Перепроверка запущена. Результат появится в PR через несколько минут."
 
     return trigger_recheck
