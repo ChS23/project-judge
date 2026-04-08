@@ -111,12 +111,22 @@ async def judge_report(
     llm = get_llm()
     judge_input = _build_judge_input(scenario, agent_report)
 
-    response = await llm.ainvoke(
-        [
-            {"role": "system", "content": JUDGE_PROMPT},
-            {"role": "user", "content": judge_input},
-        ]
-    )
+    judge_llm = llm.with_structured_output(JudgeVerdict, method="function_calling")
 
-    raw = _strip_markdown_json(str(response.content))
-    return JudgeVerdict.model_validate_json(raw)
+    try:
+        return await judge_llm.ainvoke(
+            [
+                {"role": "system", "content": JUDGE_PROMPT},
+                {"role": "user", "content": judge_input},
+            ]
+        )
+    except Exception:
+        # Fallback: raw completion + manual parse
+        response = await llm.ainvoke(
+            [
+                {"role": "system", "content": JUDGE_PROMPT},
+                {"role": "user", "content": judge_input},
+            ]
+        )
+        raw = _strip_markdown_json(str(response.content))
+        return JudgeVerdict.model_validate_json(raw)
