@@ -70,22 +70,49 @@ cd docs/diagrams && pnpx aact analyze  # metrics
 - **Observability**: Langfuse + structlog
 - **Deploy**: Docker Compose
 
+## Предварительные требования
+
+- **Python 3.13+** (через [uv](https://docs.astral.sh/uv/))
+- **Docker** и **Docker Compose**
+- **GitHub App** — создать на github.com/settings/apps, выдать permissions: PR read/write, issues read/write, contents read
+- **Z.AI API key** — зарегистрироваться на z.ai
+- **Google Sheets** — service account с доступом к spreadsheet
+
 ## Запуск
 
 ```bash
-# 1. Настроить переменные окружения
+# 1. Установить зависимости
+uv sync
+
+# 2. Настроить переменные окружения
 cp .env.example .env
 # Заполнить: GITHUB_APP_ID, GITHUB_PRIVATE_KEY_PATH, GITHUB_WEBHOOK_SECRET,
 #            ZAI_API_KEY, E2B_API_KEY, GOOGLE_SERVICE_ACCOUNT_JSON, etc.
 
-# 2. Запустить
+# 3. Запустить (Docker)
 docker compose up -d
 
-# 3. Для разработки (Redis port exposed)
+# 4. Для разработки (Redis port exposed)
 docker compose -f compose.dev.yml up -d
 
-# 4. Для туннеля (ngrok/cloudflared)
+# 5. Для туннеля (ngrok/cloudflared)
 docker compose -f compose.host.yml up -d
+```
+
+## Тесты
+
+```bash
+# Unit тесты (быстрые, без LLM)
+uv run python -m pytest tests/ -m "not llm_eval" -v
+
+# Eval тесты (нужен ZAI_API_KEY в .env, ~10-15 мин)
+uv run python -m pytest tests/test_eval/ -v -s
+
+# Eval в Docker (host network для доступа к API)
+docker compose -f compose.eval.yml run eval
+
+# Standalone eval runner с JSON отчётом
+uv run python tests/test_eval/run_eval.py
 ```
 
 ## Документация
@@ -99,6 +126,9 @@ docker compose -f compose.host.yml up -d
 | [governance.md](docs/governance.md) | Риски, injection defense, data handling |
 | [data-sources.md](docs/data-sources.md) | Google Sheets schema, источники данных |
 | [product-proposal.md](docs/product-proposal.md) | Цели, метрики, edge cases |
+| [decisions/](docs/decisions/) | ADR: 6 архитектурных решений с обоснованиями |
+| [eval/](docs/eval/) | Методология eval + baseline результаты |
+| [safety/](docs/safety/) | Injection defense, escalation policy, data handling |
 
 ## Что НЕ делает (out-of-scope)
 
